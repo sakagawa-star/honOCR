@@ -1,0 +1,14 @@
+# Codexレビューの過程ログはローカルのみ（result.md は git 管理する）
+docs/issues/*/reviews/*.full.log
+
+# Claude Code のローカル設定・引き継ぎノート
+.claude/settings.local.json
+.claude/handovers/
+
+# Python / uv
+.venv/
+__pycache__/
+*.pyc
+
+# OCR成果物（サイズが大きいためローカルのみ。必要になれば見直す）
+output/
