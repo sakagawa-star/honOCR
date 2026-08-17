@@ -13,3 +13,4 @@
 | ID | 概要 | ステータス | 備考 |
 |---|---|---|---|
 | feat-001 | uv 環境構築と MinerU 導入 | Closed | 2026-08-17 完了。案件フォルダ: feat-001-env-setup-mineru |
+| feat-002 | TIF → OCR用可逆PDF生成スクリプト | Closed | 2026-08-17 完了。案件フォルダ: feat-002-tif-to-ocr-pdf |

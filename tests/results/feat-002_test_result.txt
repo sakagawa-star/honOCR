@@ -1,0 +1,32 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/sakagawa/git/honOCR/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/sakagawa/git/honOCR
+configfile: pyproject.toml
+plugins: anyio-4.14.2
+collecting ... collected 16 items
+
+tests/test_env.py::test_python_version PASSED                            [  6%]
+tests/test_env.py::test_torch_cuda_available PASSED                      [ 12%]
+tests/test_env.py::test_torch_cuda_build_version PASSED                  [ 18%]
+tests/test_env.py::test_gpu_compute_capability PASSED                    [ 25%]
+tests/test_env.py::test_cuda_kernel_execution PASSED                     [ 31%]
+tests/test_env.py::test_mineru_version PASSED                            [ 37%]
+tests/test_make_ocr_pdf.py::test_convert_page_rgb PASSED                 [ 43%]
+tests/test_make_ocr_pdf.py::test_convert_page_bilevel PASSED             [ 50%]
+tests/test_make_ocr_pdf.py::test_cli_creates_pdf PASSED                  [ 56%]
+tests/test_make_ocr_pdf.py::test_cli_missing_input PASSED                [ 62%]
+tests/test_make_ocr_pdf.py::test_cli_unsupported_mode PASSED             [ 68%]
+tests/test_make_ocr_pdf.py::test_cli_refuses_overwrite PASSED            [ 75%]
+tests/test_make_ocr_pdf.py::test_cli_overwrite_flag PASSED               [ 81%]
+tests/test_make_ocr_pdf.py::test_cli_truncated_tif PASSED                [ 87%]
+tests/test_make_ocr_pdf.py::test_write_atomic_no_clobber_race PASSED     [ 93%]
+tests/test_make_ocr_pdf.py::test_write_atomic_failure_cleanup PASSED     [100%]
+
+=============================== warnings summary ===============================
+tests/test_make_ocr_pdf.py::test_cli_truncated_tif
+  /home/sakagawa/git/honOCR/.venv/lib/python3.12/site-packages/PIL/TiffImagePlugin.py:950: UserWarning: Corrupt EXIF data.  Expecting to read 2 bytes but only got 0. 
+    warnings.warn(str(msg))
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================== 16 passed, 1 warning in 1.00s =========================

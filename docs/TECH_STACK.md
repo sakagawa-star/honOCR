@@ -15,6 +15,9 @@
 | torch | 2.13.0+cu130 | mineru の実行基盤（GPU 推論） | RTX 5060 Ti（sm_120）対応の CUDA 13.0 ビルド。cu130 インデックスから明示固定 |
 | torchvision | 0.28.0+cu130 | mineru（pipeline バックエンド）の依存 | torch 2.13.0 対応版。cu130 インデックスから明示固定 |
 | pytest | 9.1.1 | テストランナー（dev 依存） | CLAUDE.md「テスト」ルールで使用が前提。最新安定版に固定 |
+| img2pdf | 0.6.3 | OCR用PDF生成（可逆格納） | PNG を再圧縮せず Flate のまま PDF に格納できる |
+| pillow | 12.3.0 | TIF 読込・グレースケール化・1/2縮小 | mineru の推移的依存と同一版を明示固定 |
+| pypdf | 6.16.1 | テストでの PDF 検証（dev 依存） | mineru の推移的依存と同一版を明示固定 |
 
 <!--
 運用ルール:

@@ -27,7 +27,7 @@
 
 - **言語**: Python 3.12.3
 - **パッケージ管理**: uv
-- **主要フレームワーク/ライブラリ**: MinerU 3.4.4（OCR本体、導入済み）、img2pdf / pillow（前処理、導入予定）
+- **主要フレームワーク/ライブラリ**: MinerU 3.4.4（OCR本体）、img2pdf / pillow（前処理・OCR用PDF生成）
 - **詳細**: `docs/TECH_STACK.md` を参照
 - **注意**: GPU は RTX 5060 Ti 16GB（Blackwell, sm_120）。CUDA 12.8 以降のビルドが必須で、古い CUDA 前提のツールは動かない
 
@@ -56,8 +56,11 @@ honOCR/
 │   ├── TECH_STACK.md
 │   ├── codex-exec-ubuntu24-bwrap-fix.md
 │   └── issues/             # 案件ディレクトリ
+├── scripts/
+│   └── make_ocr_pdf.py     # TIF → OCR用可逆PDF生成 CLI（feat-002）
 └── tests/
     ├── test_env.py         # 環境スモークテスト（feat-001）
+    ├── test_make_ocr_pdf.py  # 変換スクリプトのテスト（feat-002）
     └── results/            # テスト結果の保存先
 ```
 
