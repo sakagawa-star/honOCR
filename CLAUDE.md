@@ -43,17 +43,16 @@
 ```
 honOCR/
 ├── CLAUDE.md               # 本ファイル
-├── docs/                   # ドキュメント（開発プロセス基準）
-│   ├── BACKLOG.md
-│   ├── CHANGELOG.md
-│   ├── BUGFIX_STANDARD.md
-│   ├── DESIGN_STANDARD.md
-│   ├── REQUIREMENTS_STANDARD.md
-│   ├── REVIEW_CRITERIA.md
-│   ├── TECH_STACK.md
-│   ├── codex-exec-ubuntu24-bwrap-fix.md
-│   └── issues/             # 案件ディレクトリ
-└── template/               # 導入元の開発ドキュメントテンプレート（参照用）
+└── docs/                   # ドキュメント（開発プロセス基準）
+    ├── BACKLOG.md
+    ├── CHANGELOG.md
+    ├── BUGFIX_STANDARD.md
+    ├── DESIGN_STANDARD.md
+    ├── REQUIREMENTS_STANDARD.md
+    ├── REVIEW_CRITERIA.md
+    ├── TECH_STACK.md
+    ├── codex-exec-ubuntu24-bwrap-fix.md
+    └── issues/             # 案件ディレクトリ
 ```
 
 ## ドメイン知識
@@ -104,7 +103,7 @@ honOCR/
 
 開発プロセスを定める運用ドキュメント（`CLAUDE.md`、`docs/` 直下の基準書・BACKLOG・CHANGELOG、`.gitignore` 等）の改訂は **update-XXX 案件**として扱い、以下のフローを**厳守**する。典型例:
 
-- 本プロジェクトのコピー元テンプレート（`template/` ディレクトリ、開発ドキュメントテンプレート）の改訂の取り込み
+- 本プロジェクトのコピー元テンプレートリポジトリ（開発ドキュメントテンプレート）の改訂の取り込み
 - ドキュメント間の二重管理・不整合の解消、運用ルールの新設・変更
 
 **ソースコード・テストコードの変更は含まない。** 作業中にコード変更が必要と判明した場合は中断し、feat/bug 案件として起票し直す。個別機能のドキュメント（案件フォルダ内の requirements.md 等）の修正は元案件側で扱い、update 案件にはしない。
