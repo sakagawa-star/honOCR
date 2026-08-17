@@ -14,3 +14,5 @@
 |---|---|---|---|
 | feat-001 | uv 環境構築と MinerU 導入 | Closed | 2026-08-17 完了。案件フォルダ: feat-001-env-setup-mineru |
 | feat-002 | TIF → OCR用可逆PDF生成スクリプト | Closed | 2026-08-17 完了。案件フォルダ: feat-002-tif-to-ocr-pdf |
+| feat-003 | MinerU 試行（章単位PDFの品質確認） | Closed | 2026-08-17 完了（判定 No-Go、対策は feat-004）。案件フォルダ: feat-003-mineru-trial |
+| feat-004 | 句読点正規化の後処理と再判定 | Open | feat-003 No-Go 対策。案件フォルダ: feat-004-punct-normalize |

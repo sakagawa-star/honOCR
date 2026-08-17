@@ -4,6 +4,12 @@
 
 ### 2026-08-17
 
+- **feat-003**: MinerU 試行（章単位PDFの品質確認）
+  - 章単位PDF を生成（chap-00: 17ページ 6.9MB / chap-01: 64ページ 54.5MB。章対応はユーザー回答＋機械検証で確定し案件 README に記録）
+  - MinerU 3.4.4（hybrid-engine 既定）で chap-01 を変換。初回モデルDL 2.4GB、所要 6分26秒、独立数式157件。プロキシ環境で localhost ヘルスチェックが 502 になる想定外事象が発生し、`no_proxy` への localhost 追加を設計に反映して解決（run-01 失敗 → run-02 成功）
+  - 品質判定（criteria lock 済みの事前基準）: 数式 19/20 合格・本文 7/10 **不合格**・読み順 5/5 合格 → **No-Go**。不合格の主因は句読点「，．」→「、。」の系統的置換（全ブロックの15%・241箇所）。純粋な文字誤認識は10段落で1文字のみ。対策として feat-004（句読点正規化の後処理）を起票
+  - 回帰テスト16件 PASS（`tests/results/feat-003_test_result.txt`）。Codex レビュー: 4サイクル（高3・中4を検出、criteria lock 含む）
+
 - **feat-002**: TIF → OCR用可逆PDF生成スクリプト
   - `scripts/make_ocr_pdf.py` を追加。原本TIF（600dpi）をグレースケール化・1/2縮小（300dpi相当）し、Flate 可逆で複数ページPDFに格納する CLI（入力TIF列 + `-o` + `--overwrite`。章対応は呼び出し時のファイル指定で表現）
   - 安全設計: 変換前の全件検証（存在・モード・`im.load()` による実デコード）、一時ファイル経由の原子的書き込み（no-clobber は `os.link`、上書きは `os.replace`）
