@@ -1,0 +1,28 @@
+[project]
+name = "honocr"
+version = "0.1.0"
+description = "スキャン書籍（PRML）をOCRしてLLM学習用Markdownに変換する"
+requires-python = ">=3.12"
+dependencies = [
+    "mineru[core]==3.4.4",
+    "torch==2.13.0",
+    "torchvision==0.28.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+]
+
+[tool.uv]
+python-downloads = "never"
+python-preference = "only-system"
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu130" }
+torchvision = { index = "pytorch-cu130" }

@@ -27,7 +27,7 @@
 
 - **言語**: Python 3.12.3
 - **パッケージ管理**: uv
-- **主要フレームワーク/ライブラリ**: MinerU（OCR本体、導入予定）、img2pdf / pillow（前処理、導入予定）
+- **主要フレームワーク/ライブラリ**: MinerU 3.4.4（OCR本体、導入済み）、img2pdf / pillow（前処理、導入予定）
 - **詳細**: `docs/TECH_STACK.md` を参照
 - **注意**: GPU は RTX 5060 Ti 16GB（Blackwell, sm_120）。CUDA 12.8 以降のビルドが必須で、古い CUDA 前提のツールは動かない
 
@@ -43,16 +43,22 @@
 ```
 honOCR/
 ├── CLAUDE.md               # 本ファイル
-└── docs/                   # ドキュメント（開発プロセス基準）
-    ├── BACKLOG.md
-    ├── CHANGELOG.md
-    ├── BUGFIX_STANDARD.md
-    ├── DESIGN_STANDARD.md
-    ├── REQUIREMENTS_STANDARD.md
-    ├── REVIEW_CRITERIA.md
-    ├── TECH_STACK.md
-    ├── codex-exec-ubuntu24-bwrap-fix.md
-    └── issues/             # 案件ディレクトリ
+├── pyproject.toml          # uv プロジェクト定義（依存・[tool.uv] 設定・cu130 インデックス）
+├── .python-version         # Python 3.12 固定
+├── uv.lock                 # ロックファイル（自動生成）
+├── docs/                   # ドキュメント（開発プロセス基準）
+│   ├── BACKLOG.md
+│   ├── CHANGELOG.md
+│   ├── BUGFIX_STANDARD.md
+│   ├── DESIGN_STANDARD.md
+│   ├── REQUIREMENTS_STANDARD.md
+│   ├── REVIEW_CRITERIA.md
+│   ├── TECH_STACK.md
+│   ├── codex-exec-ubuntu24-bwrap-fix.md
+│   └── issues/             # 案件ディレクトリ
+└── tests/
+    ├── test_env.py         # 環境スモークテスト（feat-001）
+    └── results/            # テスト結果の保存先
 ```
 
 ## ドメイン知識

@@ -1,0 +1,16 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/sakagawa/git/honOCR/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/sakagawa/git/honOCR
+configfile: pyproject.toml
+plugins: anyio-4.14.2
+collecting ... collected 6 items
+
+tests/test_env.py::test_python_version PASSED                            [ 16%]
+tests/test_env.py::test_torch_cuda_available PASSED                      [ 33%]
+tests/test_env.py::test_torch_cuda_build_version PASSED                  [ 50%]
+tests/test_env.py::test_gpu_compute_capability PASSED                    [ 66%]
+tests/test_env.py::test_cuda_kernel_execution PASSED                     [ 83%]
+tests/test_env.py::test_mineru_version PASSED                            [100%]
+
+============================== 6 passed in 0.78s ===============================
