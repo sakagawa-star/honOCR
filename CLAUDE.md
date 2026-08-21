@@ -31,12 +31,13 @@
 - **詳細**: `docs/TECH_STACK.md` を参照
 - **注意**: GPU は RTX 5060 Ti 16GB（Blackwell, sm_120）。CUDA 12.8 以降のビルドが必須で、古い CUDA 前提のツールは動かない
 
-## テストデータ
+## データ
 
-場所: `/home/sakagawa/work/Pattern_Recognition_and_Machine_Learning/chap01/out/`（git 管理外・リポジトリ外）
+`{BASE}` = `/home/sakagawa/work/Pattern_Recognition_and_Machine_Learning`（git 管理外・リポジトリ外）
 
-- `page-NN_{1L,2R}.tif`（84枚。2026-08-18 実測）: 補正済みスキャン原本。3683×5806px、600dpi、RGB、LZW可逆。**OCR入力はこちらを使う**。白紙ページのみ 1-bit G4（916B）
-- `chap-0*_300dpi.pdf`: LLM閲覧用に圧縮したPDF。300dpi RGB JPEG（非可逆、圧縮率1〜2%）、テキスト層なし。**OCR入力には使わない**（JPEGノイズが数式の添字認識に不利）
+- **スキャン原本**: `{BASE}/chapNN/out/`（NN = 00〜07）の `page-NN_{1L,2R}.tif` 計396枚（chap00: 20 / chap01: 84 / chap02: 70 / chap03: 44 / chap04: 48 / chap05: 70 / chap06: 36 / chap07: 24。2026-08-18 実測）。補正済み、600dpi、RGB、LZW可逆（章によりピクセル寸法は微差）。**OCR入力はこちらを使う**。白紙ページのみ 1-bit G4（約1KB）
+- 各 `out/` の `chapNN_300dpi.pdf` は LLM閲覧用の非可逆圧縮PDF（テキスト層なし）。**OCR入力には使わない**（JPEGノイズが数式の添字認識に不利）
+- **OCR 成果物**: `{BASE}/ocr/` 配下 — `pdf/`（入力PDF＋manifest）、`mineru-full/chapNN/run-NN{,-normalized}/`（実行別出力）、**`final/chapNN/`（最終成果物: Markdown＋content_list.json＋カラー images/。feat-005 で全8章構築済み）**
 
 ## ディレクトリ構成（主要部分）
 

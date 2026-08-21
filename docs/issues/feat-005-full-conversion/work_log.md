@@ -82,3 +82,24 @@ design.md の手順に従い、手順ごとに追記する（上書きしない�
 
 - 処理済み4章に `colorize_images.py` を適用: chap00 = 3 / chap01 = 55 / chap02 = 55 / chap03 = 36 ブロック（いずれも unique 一致・終了コード 0）
 - 出力先: 各章の `run-01-normalized/images/`。§4.4 前提条件のカラー再切出は chap04〜07 の OCR 完了後に同様に実施する
+
+## §4.2 / §4.3 chap04〜07（run-01、2026-08-21。ocr_dir.py で一括実行）
+
+- `uv run python scripts/ocr_dir.py {BASE}/chap0{4..7}/out -o {ROOT} --overwrite-pdf` を実行。全4章 **PASS**:
+  - chap04: pages=48 blocks=628 replaced=149+149（4分53秒）
+  - chap05: pages=70 blocks=876 replaced=387+387（6分15秒）
+  - chap06: pages=36 blocks=466 replaced=52+56（3分6秒）
+  - chap07: pages=24 blocks=316 replaced=7+7（2分10秒）
+- スクリプト内機械確認（ページ数・page_idx（白紙位置整合）・コードポイント比較・残存0）すべて合格
+- FR-002 基準4（モデル追加DLなし）: `du -sb ~/.cache` = 53,076,947,755（基準 53,086,712,269 から微減。差分 < 100MB 合格）
+- カラー再切出（feat-007）: chap04 = 27 / chap05 = 41 / chap06 = 25 / chap07 = 0（図なし。設計上の正常ケース）。全件終了コード 0
+
+## §4.4 final ディレクトリ構築（2026-08-21）
+
+- 前提条件確認: 全8章 §4.3 合格＋カラー再切出完了（img_path ユニーク数 = images ファイル数、全章一致）✓
+- `{ROOT}/final/chapNN/`（NN=00〜07）を構築。機械確認 **PASS**:
+  - 全8章 × 3項目の存在 ✓ / md・content_list 計16ファイルのバイト同一（cmp）✓
+  - md 参照画像 ⊆ images ✓（chap01: 53/55、chap02: 54/55、chap06: 24/25 — 差分は content_list のみ参照の画像で、基準4により images に収録済み）
+  - content_list の img_path ユニーク集合 = images ファイル集合（FR-004 基準4）✓ 全8章
+  - chap07 は図 0 件のため空 images/ を作成（境界条件どおり）
+- 回帰テスト: 56件全 PASS（`tests/results/feat-005_test_result.txt`）
