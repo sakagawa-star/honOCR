@@ -1,0 +1,57 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/sakagawa/git/honOCR/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/sakagawa/git/honOCR
+configfile: pyproject.toml
+plugins: anyio-4.14.2
+collecting ... collected 41 items
+
+tests/test_env.py::test_python_version PASSED                            [  2%]
+tests/test_env.py::test_torch_cuda_available PASSED                      [  4%]
+tests/test_env.py::test_torch_cuda_build_version PASSED                  [  7%]
+tests/test_env.py::test_gpu_compute_capability PASSED                    [  9%]
+tests/test_env.py::test_cuda_kernel_execution PASSED                     [ 12%]
+tests/test_env.py::test_mineru_version PASSED                            [ 14%]
+tests/test_make_ocr_pdf.py::test_convert_page_rgb PASSED                 [ 17%]
+tests/test_make_ocr_pdf.py::test_convert_page_bilevel PASSED             [ 19%]
+tests/test_make_ocr_pdf.py::test_cli_creates_pdf PASSED                  [ 21%]
+tests/test_make_ocr_pdf.py::test_cli_missing_input PASSED                [ 24%]
+tests/test_make_ocr_pdf.py::test_cli_unsupported_mode PASSED             [ 26%]
+tests/test_make_ocr_pdf.py::test_cli_refuses_overwrite PASSED            [ 29%]
+tests/test_make_ocr_pdf.py::test_cli_overwrite_flag PASSED               [ 31%]
+tests/test_make_ocr_pdf.py::test_cli_truncated_tif PASSED                [ 34%]
+tests/test_make_ocr_pdf.py::test_write_atomic_no_clobber_race PASSED     [ 36%]
+tests/test_make_ocr_pdf.py::test_write_atomic_failure_cleanup PASSED     [ 39%]
+tests/test_normalize_punct.py::test_replaces_punctuation PASSED          [ 41%]
+tests/test_normalize_punct.py::test_preserves_other_content PASSED       [ 43%]
+tests/test_normalize_punct.py::test_input_unchanged PASSED               [ 46%]
+tests/test_normalize_punct.py::test_cli_missing_input PASSED             [ 48%]
+tests/test_normalize_punct.py::test_cli_not_utf8 PASSED                  [ 51%]
+tests/test_normalize_punct.py::test_cli_duplicate_basename PASSED        [ 53%]
+tests/test_normalize_punct.py::test_cli_refuses_overwrite PASSED         [ 56%]
+tests/test_normalize_punct.py::test_cli_overwrite_flag PASSED            [ 58%]
+tests/test_ocr_dir.py::test_derive_name_plain PASSED                     [ 60%]
+tests/test_ocr_dir.py::test_derive_name_out PASSED                       [ 63%]
+tests/test_ocr_dir.py::test_blank_positions PASSED                       [ 65%]
+tests/test_ocr_dir.py::test_next_run_number_empty PASSED                 [ 68%]
+tests/test_ocr_dir.py::test_next_run_number_existing PASSED              [ 70%]
+tests/test_ocr_dir.py::test_check_page_idx_pass PASSED                   [ 73%]
+tests/test_ocr_dir.py::test_check_page_idx_missing_fail PASSED           [ 75%]
+tests/test_ocr_dir.py::test_check_page_idx_extra_fail PASSED             [ 78%]
+tests/test_ocr_dir.py::test_check_page_idx_non_int_fail PASSED           [ 80%]
+tests/test_ocr_dir.py::test_check_normalized_pass PASSED                 [ 82%]
+tests/test_ocr_dir.py::test_check_normalized_bad_diff PASSED             [ 85%]
+tests/test_ocr_dir.py::test_check_normalized_residual PASSED             [ 87%]
+tests/test_ocr_dir.py::test_manifest_roundtrip_match PASSED              [ 90%]
+tests/test_ocr_dir.py::test_manifest_mismatch PASSED                     [ 92%]
+tests/test_ocr_dir.py::test_cli_name_with_multiple_dirs PASSED           [ 95%]
+tests/test_ocr_dir.py::test_cli_duplicate_names PASSED                   [ 97%]
+tests/test_ocr_dir.py::test_cli_missing_dir PASSED                       [100%]
+
+=============================== warnings summary ===============================
+tests/test_make_ocr_pdf.py::test_cli_truncated_tif
+  /home/sakagawa/git/honOCR/.venv/lib/python3.12/site-packages/PIL/TiffImagePlugin.py:950: UserWarning: Corrupt EXIF data.  Expecting to read 2 bytes but only got 0. 
+    warnings.warn(str(msg))
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================== 41 passed, 1 warning in 1.01s =========================

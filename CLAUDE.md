@@ -35,7 +35,7 @@
 
 場所: `/home/sakagawa/work/Pattern_Recognition_and_Machine_Learning/chap01/out/`（git 管理外・リポジトリ外）
 
-- `page-NN_{1L,2R}.tif`（87枚, 計454MB）: 補正済みスキャン原本。3683×5806px、600dpi、RGB、LZW可逆。**OCR入力はこちらを使う**。白紙ページのみ 1-bit G4（916B）
+- `page-NN_{1L,2R}.tif`（84枚。2026-08-18 実測）: 補正済みスキャン原本。3683×5806px、600dpi、RGB、LZW可逆。**OCR入力はこちらを使う**。白紙ページのみ 1-bit G4（916B）
 - `chap-0*_300dpi.pdf`: LLM閲覧用に圧縮したPDF。300dpi RGB JPEG（非可逆、圧縮率1〜2%）、テキスト層なし。**OCR入力には使わない**（JPEGノイズが数式の添字認識に不利）
 
 ## ディレクトリ構成（主要部分）
@@ -57,10 +57,16 @@ honOCR/
 │   ├── codex-exec-ubuntu24-bwrap-fix.md
 │   └── issues/             # 案件ディレクトリ
 ├── scripts/
-│   └── make_ocr_pdf.py     # TIF → OCR用可逆PDF生成 CLI（feat-002）
+│   ├── make_ocr_pdf.py     # TIF → OCR用可逆PDF生成 CLI（feat-002）
+│   ├── normalize_punct.py  # MinerU 出力の句読点正規化 CLI（feat-004）
+│   ├── ocr_dir.py          # OCR 一括実行 CLI: PDF生成→MinerU→正規化→機械確認（feat-006）
+│   └── colorize_images.py  # 図画像のカラー再切出 CLI（feat-007）
 └── tests/
     ├── test_env.py         # 環境スモークテスト（feat-001）
     ├── test_make_ocr_pdf.py  # 変換スクリプトのテスト（feat-002）
+    ├── test_normalize_punct.py  # 正規化スクリプトのテスト（feat-004）
+    ├── test_ocr_dir.py     # 一括実行スクリプトのテスト（feat-006）
+    ├── test_colorize_images.py  # カラー再切出スクリプトのテスト（feat-007）
     └── results/            # テスト結果の保存先
 ```
 
@@ -74,7 +80,9 @@ honOCR/
 - 書籍は日本語＋数式＋英語混在。NDL OCR 系は日本語専用で数式非対応
 - 章とファイルの対応（確定）: chap-00 = `page-01_2R`〜`page-09_2R` の17ファイル、chap-01 = `page-10_2R`〜`page-42_1L` の64ファイル。除外3件（章頭白紙 `page-01_1L`・`page-10_1L`、第2章が写った `page-42_2R`）。詳細は feat-003 案件 README
 - 本環境はプロキシ必須（大学ネットワーク）。MinerU 実行時は `no_proxy`/`NO_PROXY` に `localhost,127.0.0.1` を追加しないとローカルAPIヘルスチェックが 502 で失敗する
-- MinerU の出力は句読点スタイルが揺れる（原本「，．」の約15%が「、。」に置換される。feat-003 で実測）
+- MinerU の出力は句読点スタイルが揺れる（原本「，．」の約15%が「、。」に置換される。feat-003 で実測）。`scripts/normalize_punct.py` による「、→，」「。→．」の全文置換後処理で解消する（feat-004。MinerU 変換後は必ず適用する）
+- OCR の一括実行（feat-006）: `uv run python scripts/ocr_dir.py <TIFディレクトリ> -o <出力ルート>` で PDF 生成 → MinerU → 正規化 → 機械確認まで1コマンド（ユーザーが Claude Code なしで実行できる）。入力PDF には manifest（TIF のパス・サイズ・mtime）が付き、一致時のみ再利用される
+- MinerU content_list の `bbox` は 0–1000 正規化座標（ページ左上原点）。図ブロック（img_path を持つ image/chart/table）は `uv run python scripts/colorize_images.py <content_list> <TIFディレクトリ> -o <images出力先>` で原本 TIF からカラー再切出できる（feat-007。既定 1/3 縮小 = 旧画像と同等の表示サイズ。MinerU の生成画像はグレースケール PDF 由来のため必ず適用する）
 
 ## 開発方針
 

@@ -691,13 +691,13 @@ dependencies = [
     { name = "img2pdf" },
     { name = "mineru", extra = ["core"] },
     { name = "pillow" },
+    { name = "pypdf" },
     { name = "torch" },
     { name = "torchvision" },
 ]
 
 [package.dev-dependencies]
 dev = [
-    { name = "pypdf" },
     { name = "pytest" },
 ]
 
@@ -706,15 +706,13 @@ requires-dist = [
     { name = "img2pdf", specifier = "==0.6.3" },
     { name = "mineru", extras = ["core"], specifier = "==3.4.4" },
     { name = "pillow", specifier = "==12.3.0" },
+    { name = "pypdf", specifier = "==6.16.1" },
     { name = "torch", specifier = "==2.13.0", index = "https://download.pytorch.org/whl/cu130" },
     { name = "torchvision", specifier = "==0.28.0", index = "https://download.pytorch.org/whl/cu130" },
 ]
 
 [package.metadata.requires-dev]
-dev = [
-    { name = "pypdf", specifier = "==6.16.1" },
-    { name = "pytest", specifier = "==9.1.1" },
-]
+dev = [{ name = "pytest", specifier = "==9.1.1" }]
 
 [[package]]
 name = "httpcore"
