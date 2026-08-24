@@ -187,3 +187,99 @@ def test_cli_missing_dir(tmp_path: Path) -> None:
 
     ret = ocr_dir.main([str(missing), "-o", str(root)])
     assert ret == 1
+
+
+def test_parse_table_summary() -> None:
+    stdout = "x.md: 2 converted, 1 skipped\ntotal: 2 converted, 1 skipped in 1 files\n"
+    assert ocr_dir.parse_table_summary(stdout) == (2, 1)
+
+
+def test_parse_table_summary_no_match() -> None:
+    assert ocr_dir.parse_table_summary("") is None
+
+
+def test_convert_tables_success(tmp_path: Path, monkeypatch) -> None:
+    normalized_md = tmp_path / "x.md"
+    normalized_dir = tmp_path
+
+    captured_cmd = {}
+
+    class Result:
+        returncode = 0
+        stdout = "x.md: 2 converted, 0 skipped\ntotal: 2 converted, 0 skipped in 1 files\n"
+        stderr = ""
+
+    def stub(cmd, capture_output=True, text=True):
+        captured_cmd["cmd"] = cmd
+        return Result()
+
+    monkeypatch.setattr(ocr_dir.subprocess, "run", stub)
+
+    errors, tables, tables_skipped = ocr_dir.convert_tables(normalized_md, normalized_dir)
+    assert errors == []
+    assert (tables, tables_skipped) == (2, 0)
+    cmd = captured_cmd["cmd"]
+    assert "html_table_to_md.py" in cmd[1]
+    assert "--overwrite" in cmd
+    assert str(normalized_md) in cmd
+
+
+def test_convert_tables_nonzero_fail(tmp_path: Path, monkeypatch) -> None:
+    normalized_md = tmp_path / "x.md"
+    normalized_dir = tmp_path
+
+    class Result:
+        returncode = 1
+        stdout = ""
+        stderr = "boom"
+
+    def stub(cmd, capture_output=True, text=True):
+        return Result()
+
+    monkeypatch.setattr(ocr_dir.subprocess, "run", stub)
+
+    errors, tables, tables_skipped = ocr_dir.convert_tables(normalized_md, normalized_dir)
+    assert len(errors) == 1
+    assert errors[0] == "HTML表変換失敗: boom"
+    assert (tables, tables_skipped) == (0, 0)
+
+
+def test_convert_tables_summary_missing_fail(tmp_path: Path, monkeypatch) -> None:
+    normalized_md = tmp_path / "x.md"
+    normalized_dir = tmp_path
+
+    class Result:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def stub(cmd, capture_output=True, text=True):
+        return Result()
+
+    monkeypatch.setattr(ocr_dir.subprocess, "run", stub)
+
+    errors, tables, tables_skipped = ocr_dir.convert_tables(normalized_md, normalized_dir)
+    assert len(errors) == 1
+    assert "summary parse failed" in errors[0]
+    assert (tables, tables_skipped) == (0, 0)
+
+
+def test_convert_tables_warning_passes(tmp_path: Path, monkeypatch, capsys) -> None:
+    normalized_md = tmp_path / "x.md"
+    normalized_dir = tmp_path
+
+    class Result:
+        returncode = 0
+        stdout = "x.md: 1 converted, 1 skipped\ntotal: 1 converted, 1 skipped in 1 files\n"
+        stderr = "x.md:3: skipped (ragged rows)"
+
+    def stub(cmd, capture_output=True, text=True):
+        return Result()
+
+    monkeypatch.setattr(ocr_dir.subprocess, "run", stub)
+
+    errors, tables, tables_skipped = ocr_dir.convert_tables(normalized_md, normalized_dir)
+    assert errors == []
+    assert (tables, tables_skipped) == (1, 1)
+    captured = capsys.readouterr()
+    assert "x.md:3: skipped (ragged rows)" in captured.err

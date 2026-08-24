@@ -41,6 +41,8 @@ class DirResult:
     replaced_md: int
     replaced_json: int
     seconds: float
+    tables: int = 0
+    tables_skipped: int = 0
 
 
 def derive_name(d: Path) -> str:
@@ -162,6 +164,52 @@ def check_normalized(src: Path, dst: Path) -> list[str]:
         errors.append(f"residual punctuation: {residual} in {dst}")
 
     return errors
+
+
+def parse_table_summary(stdout: str) -> tuple[int, int] | None:
+    """html_table_to_md.py の合計行から (converted, skipped) を読み取る。"""
+    m = re.search(
+        r"^total: (\d+) converted, (\d+) skipped in \d+ files$",
+        stdout,
+        re.MULTILINE,
+    )
+    if m is None:
+        return None
+    return int(m.group(1)), int(m.group(2))
+
+
+def convert_tables(normalized_md: Path, normalized_dir: Path) -> tuple[list[str], int, int]:
+    """正規化済み md の HTML 表をパイプテーブルに変換する（インプレース）。
+
+    戻り値は (エラーメッセージのリスト, 変換件数, スキップ件数)。
+    エラーリストが空 = 成功。
+    """
+    cmd = [
+        sys.executable,
+        str(SCRIPTS_DIR / "html_table_to_md.py"),
+        str(normalized_md),
+        "-o",
+        str(normalized_dir),
+        "--overwrite",
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+
+    if proc.returncode != 0:
+        return [f"HTML表変換失敗: {proc.stderr.strip()}"], 0, 0
+
+    summary = parse_table_summary(proc.stdout)
+    if summary is None:
+        return (
+            [f"HTML表変換失敗: summary parse failed: {proc.stdout.strip()}"],
+            0,
+            0,
+        )
+
+    if proc.stderr.strip():
+        print(proc.stderr.strip(), file=sys.stderr)
+
+    tables, tables_skipped = summary
+    return [], tables, tables_skipped
 
 
 def _fail(name: str, reasons: list[str], start: float, pages: int = 0, blocks: int = 0,
@@ -376,6 +424,19 @@ def process_dir(d: Path, root: Path, args: argparse.Namespace) -> DirResult:
             replaced_json=replaced_json,
         )
 
+    print(f"[{name}] HTML表変換中...")
+    table_errors, tables, tables_skipped = convert_tables(normalized_md, normalized_dir)
+    if table_errors:
+        return _fail(
+            name,
+            table_errors,
+            start,
+            pages=page_count,
+            blocks=blocks,
+            replaced_md=replaced_md,
+            replaced_json=replaced_json,
+        )
+
     elapsed = time.monotonic() - start
     print(f"[{name}] 完了: PASS ({elapsed:.1f}秒)")
     return DirResult(
@@ -386,6 +447,8 @@ def process_dir(d: Path, root: Path, args: argparse.Namespace) -> DirResult:
         blocks=blocks,
         replaced_md=replaced_md,
         replaced_json=replaced_json,
+        tables=tables,
+        tables_skipped=tables_skipped,
         seconds=elapsed,
     )
 
@@ -462,7 +525,9 @@ def main(argv: list[str] | None = None) -> int:
             minutes, seconds = divmod(int(r.seconds), 60)
             print(
                 f"{r.name}: PASS pages={r.pages} blocks={r.blocks} "
-                f"replaced={r.replaced_md}+{r.replaced_json} ({minutes}分{seconds}秒)"
+                f"replaced={r.replaced_md}+{r.replaced_json} "
+                f"tables={r.tables}+{r.tables_skipped}skipped "
+                f"({minutes}分{seconds}秒)"
             )
         else:
             print(f"{r.name}: FAIL {'; '.join(r.reasons)}")

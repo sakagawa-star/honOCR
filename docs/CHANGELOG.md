@@ -2,6 +2,15 @@
 
 ## リリース履歴
 
+### 2026-08-24
+
+- **feat-008**: MinerU 出力の HTML 表を Markdown パイプテーブルに変換
+  - `scripts/html_table_to_md.py` を追加。MinerU が1行の HTML `<table>` として出力する表（CommonMark の HTML ブロックとなり `$…$` が数式描画されない。VS Code プレビューで chap01 表 1.1/1.2 の数式が LaTeX ソースのまま表示される問題の原因）を GFM パイプテーブルに変換する CLI。表タグ6種・属性なし・列数一致の単純表のみ変換し、`colspan` 等の複雑な表は壊さずスキップして警告（忠実性優先）。数式中の `<`（`$a<b$`）はセルテキストとして保持。改行コード（LF/CRLF）を含め表行以外はバイト不変
+  - `scripts/ocr_dir.py` に組み込み: 機械確認合格後に正規化済み md をインプレース変換（`convert_tables` / `parse_table_summary` を新設。合計行を読み取れない場合は FAIL）。PASS サマリに `tables=` を追加。content_list.json は MinerU スキーマ維持のため無改変
+  - 既存データ適用: chap01（2表）・chap06（1表）の final / run-01-normalized 計4ファイルを変換（スキップ 0、変更行は表行の置換のみ、content_list・images の sha256 不変）。ユーザー手動テストで chap01 表 1.1/1.2 の数式描画を確認
+  - **付随して発見・復旧**: run-01-normalized の md 2件が feat-005 の final 構築（8/21 15:05、バイト同一 PASS 記録あり）後に外的要因で損傷していた（chap06 末尾49行欠落・chap07 先頭28行欠落。mtime 8/21 15:12、原因プロセス特定不能）。final は全8章とも生出力＋正規化とバイト一致（正）であることを確認の上、final からのコピーで復旧。復旧後、全8章で final = run-01-normalized のバイト同一・`<table` 行 0 を検証（調査記録は案件 README「実装中の発見」）
+  - テスト29件追加（計85件全 PASS、`tests/results/feat-008_test_result.txt`）。Codex レビュー: 5サイクルで収束（高2・中5を検出。うち1件は Sonnet 実装時検出の設計書の名前衝突 `convert_table(html)` × `import html`）。実装中断2回（設計書矛盾・データ損傷）はいずれも調査→設計改訂→レビュー→承認を経て再開
+
 ### 2026-08-21
 
 - **feat-005**: 全スキャンデータの本処理（フェーズ4 完了）
