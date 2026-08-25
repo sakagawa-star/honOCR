@@ -20,3 +20,5 @@
 | feat-006 | OCR 一括実行スクリプト（ocr_dir.py） | Closed | 2026-08-18 完了。PDF生成→MinerU→正規化→機械確認を1コマンド化（Claude Code 不要）。案件フォルダ: feat-006-ocr-pipeline-cli |
 | feat-007 | 図画像のカラー再切出（colorize_images.py） | Closed | 2026-08-18 完了（差し戻し1回: 既定1/3縮小を追加）。bbox で原本TIF からカラー再切出。案件フォルダ: feat-007-colorize-images |
 | feat-008 | MinerU 出力の HTML 表を Markdown パイプテーブルに変換（html_table_to_md.py） | Closed | 2026-08-24 完了。VS Code プレビューで表内数式が描画されない問題（chap01 表 1.1/1.2）の対処。既存データ適用済み・ocr_dir.py 組み込み済み。付随して normalized md 2件の損傷を発見し final から復旧。案件フォルダ: feat-008-html-table-to-md |
+| feat-009 | MinerU 出力から欠落する脚注（訳注）の Markdown 挿入（insert_footnotes.py） | Closed | 2026-08-25 完了。MinerU が md に出力しない page_footnote 型（chap01=訳注1〜13 等）を content_list から組み立てて挿入。既存データ適用済み・ocr_dir.py 組み込み済み。ユーザー手動テストで注釈4・5 の表示を確認。案件フォルダ: feat-009-insert-footnotes |
+| feat-010 | 手動修正の永続化: 修正定義ファイルの機械適用（apply_fixes.py） | Closed | 2026-08-25 完了。修正を old→new の定義ファイル（{BASE}/ocr/fixes/、リポジトリ外）として管理しパイプライン最終段で機械適用。初期データとして式番号誤結合5件を修正・適用済み。ユーザー実データ確認済み。案件フォルダ: feat-010-apply-fixes |

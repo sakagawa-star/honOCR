@@ -2,6 +2,20 @@
 
 ## リリース履歴
 
+### 2026-08-25
+
+- **feat-010**: 手動修正の永続化 — 修正定義ファイルの機械適用
+  - `scripts/apply_fixes.py` を追加。OCR 誤りの手動修正を「old→new の完全一致文字列ペア」として章ごとの修正定義ファイルに記録し、md に機械適用する CLI。old ちょうど1回一致で置換、old 不在でも new ちょうど1回なら適用済みスキップ（冪等）、それ以外（不在・複数一致・曖昧）は全件エラーで出力を書かない。出力前に最終不変条件（全 fix で old=0回・new=1回）を検査し、再実行が冪等にならない定義を初回に検出する
+  - **公開分離**: 定義ファイルの実体（書籍本文の文字列を含む）はリポジトリ外 `{BASE}/ocr/fixes/{name}.json` にのみ置く（GitHub 公開時に露出しない。ユーザー要件）。リポジトリには `fixes/template.json`（架空文字列のみ）と `fixes/README.md`（書式仕様・適用規則）のみ
+  - `scripts/ocr_dir.py` に `--fixes-dir` オプションを追加: 脚注挿入の直後に `{name}.json` があれば適用（なければ何もしない）。PASS サマリに `fixes=` を追加
+  - 初期データ: MinerU の式番号誤結合5件（chap01 の (1.25)/(1.26)、chap02 の (2.218)/(2.219)、chap05 の (5.98)〜(5.100)・(5.106)/(5.107)・(5.159)/(5.160)。全て原本 TIF 目視確認済み）を定義し、final / run-01-normalized 両系統に適用（applied 1/1/3、両系統バイト同一・content_list 無改変・迷子番号 0 件・各タグちょうど1回・冪等性を検証）。統合型3件は array を独立 `$$` ブロックに分割（構文要素のみ除去）
+  - テスト34件追加（計143件全 PASS、`tests/results/feat-010_test_result.txt`）。Codex レビュー: 3サイクルで収束（高2・中2を検出。主要指摘は要求仕様内の公開分離違反、array 分割と alignment marker の衝突、適用済み判定の甘さ、冪等性の最終不変条件不足）
+- **feat-009**: MinerU 出力から欠落する脚注（訳注）の Markdown 挿入
+  - `scripts/insert_footnotes.py` を追加。MinerU が Markdown に出力しない `page_footnote` 型ブロック（chap01 の訳注1〜13 を含む計31ブロック。ユーザー報告: 式 (1.45) 後の注釈4・5 が md に見当たらない）を content_list.json からページ単位で組み立て、該当ページ本文末尾の直後に blockquote（`> 4 訳注：…`）として挿入する CLI。組み立ては「浮遊断片除去（空白除去後の部分文字列判定）→ bbox (y0, x0) 読み順ソート → 脚注番号プレフィックスで結合」。アンカー探索は単調増加カーソルの完全一致（table は `table_body` → `convert_table` 再生成パイプテーブル → `img_path` の3候補）。冪等（既挿入はスキップ）、content_list は無改変
+  - `scripts/ocr_dir.py` に組み込み: HTML 表変換の直後に正規化済み md へインプレース適用（`insert_footnotes` / `parse_footnote_summary` を新設。非0終了・サマリ解析不能は FAIL）。PASS サマリに `footnotes=` を追加
+  - 既存データ適用: 全8章 × final / run-01-normalized 両系統。挿入は chap01 = 14件＋1件スキップ（第2章冒頭が写った最終ページ。アンカーなしで正）、chap02 = 3件、chap06 = 2件、他5章 = 0件（設計の期待値と完全一致）。適用後も final = run-01-normalized のバイト同一・content_list 16ファイルの sha256 不変を検証。実データで冪等性も確認（再実行 0件挿入・md 不変）。ユーザー手動テストで注釈4・5 の表示を確認
+  - テスト24件追加（計109件全 PASS、`tests/results/feat-009_test_result.txt`）。Codex レビュー: 2サイクルで収束（高1・中1を検出。主要指摘は feat-008 変換後 md で table アンカーが `img_path` では一致しない矛盾）
+
 ### 2026-08-24
 
 - **feat-008**: MinerU 出力の HTML 表を Markdown パイプテーブルに変換

@@ -43,6 +43,10 @@ class DirResult:
     seconds: float
     tables: int = 0
     tables_skipped: int = 0
+    footnotes: int = 0
+    footnotes_skipped: int = 0
+    fixes_applied: int = 0
+    fixes_skipped: int = 0
 
 
 def derive_name(d: Path) -> str:
@@ -210,6 +214,104 @@ def convert_tables(normalized_md: Path, normalized_dir: Path) -> tuple[list[str]
 
     tables, tables_skipped = summary
     return [], tables, tables_skipped
+
+
+def parse_footnote_summary(stdout: str) -> tuple[int, int] | None:
+    """insert_footnotes.py の合計行から (inserted, skipped) を読み取る。"""
+    m = re.search(
+        r"^total: (\d+) inserted, (\d+) skipped$",
+        stdout,
+        re.MULTILINE,
+    )
+    if m is None:
+        return None
+    return int(m.group(1)), int(m.group(2))
+
+
+def insert_footnotes(
+    normalized_md: Path, normalized_content_list: Path, normalized_dir: Path
+) -> tuple[list[str], int, int]:
+    """正規化済み md に脚注を挿入する（インプレース）。
+
+    戻り値は (エラーメッセージのリスト, 挿入件数, スキップ件数)。
+    エラーリストが空 = 成功。
+    """
+    cmd = [
+        sys.executable,
+        str(SCRIPTS_DIR / "insert_footnotes.py"),
+        str(normalized_md),
+        str(normalized_content_list),
+        "-o",
+        str(normalized_dir),
+        "--overwrite",
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+
+    if proc.returncode != 0:
+        return [f"脚注挿入失敗: {proc.stderr.strip()}"], 0, 0
+
+    summary = parse_footnote_summary(proc.stdout)
+    if summary is None:
+        return (
+            [f"脚注挿入失敗: summary parse failed: {proc.stdout.strip()}"],
+            0,
+            0,
+        )
+
+    if proc.stderr.strip():
+        print(proc.stderr.strip(), file=sys.stderr)
+
+    footnotes, footnotes_skipped = summary
+    return [], footnotes, footnotes_skipped
+
+
+def parse_fixes_summary(stdout: str) -> tuple[int, int] | None:
+    """apply_fixes.py の合計行から (applied, skipped) を読み取る。"""
+    m = re.search(
+        r"^total: (\d+) applied, (\d+) skipped$",
+        stdout,
+        re.MULTILINE,
+    )
+    if m is None:
+        return None
+    return int(m.group(1)), int(m.group(2))
+
+
+def apply_fixes(
+    normalized_md: Path, fixes_file: Path, normalized_dir: Path
+) -> tuple[list[str], int, int]:
+    """正規化済み md に修正定義ファイルを適用する（インプレース）。
+
+    戻り値は (エラーメッセージのリスト, applied 件数, skipped 件数)。
+    エラーリストが空 = 成功。
+    """
+    cmd = [
+        sys.executable,
+        str(SCRIPTS_DIR / "apply_fixes.py"),
+        str(normalized_md),
+        str(fixes_file),
+        "-o",
+        str(normalized_dir),
+        "--overwrite",
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+
+    if proc.returncode != 0:
+        return [f"修正適用失敗: {proc.stderr.strip()}"], 0, 0
+
+    summary = parse_fixes_summary(proc.stdout)
+    if summary is None:
+        return (
+            [f"修正適用失敗: summary parse failed: {proc.stdout.strip()}"],
+            0,
+            0,
+        )
+
+    if proc.stderr.strip():
+        print(proc.stderr.strip(), file=sys.stderr)
+
+    applied, skipped = summary
+    return [], applied, skipped
 
 
 def _fail(name: str, reasons: list[str], start: float, pages: int = 0, blocks: int = 0,
@@ -437,6 +539,41 @@ def process_dir(d: Path, root: Path, args: argparse.Namespace) -> DirResult:
             replaced_json=replaced_json,
         )
 
+    print(f"[{name}] 脚注挿入中...")
+    fn_errors, footnotes, footnotes_skipped = insert_footnotes(
+        normalized_md, normalized_content_list, normalized_dir
+    )
+    if fn_errors:
+        return _fail(
+            name,
+            fn_errors,
+            start,
+            pages=page_count,
+            blocks=blocks,
+            replaced_md=replaced_md,
+            replaced_json=replaced_json,
+        )
+
+    fixes_applied = 0
+    fixes_skipped = 0
+    if args.fixes_dir is not None:
+        fixes_file = args.fixes_dir / f"{name}.json"
+        if fixes_file.is_file():
+            print(f"[{name}] 修正適用中...")
+            fx_errors, fixes_applied, fixes_skipped = apply_fixes(
+                normalized_md, fixes_file, normalized_dir
+            )
+            if fx_errors:
+                return _fail(
+                    name,
+                    fx_errors,
+                    start,
+                    pages=page_count,
+                    blocks=blocks,
+                    replaced_md=replaced_md,
+                    replaced_json=replaced_json,
+                )
+
     elapsed = time.monotonic() - start
     print(f"[{name}] 完了: PASS ({elapsed:.1f}秒)")
     return DirResult(
@@ -449,6 +586,10 @@ def process_dir(d: Path, root: Path, args: argparse.Namespace) -> DirResult:
         replaced_json=replaced_json,
         tables=tables,
         tables_skipped=tables_skipped,
+        footnotes=footnotes,
+        footnotes_skipped=footnotes_skipped,
+        fixes_applied=fixes_applied,
+        fixes_skipped=fixes_skipped,
         seconds=elapsed,
     )
 
@@ -494,6 +635,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=DEFAULT_TIMEOUT_MIN,
         help=f"MinerU のタイムアウト（分。既定 {DEFAULT_TIMEOUT_MIN}）",
     )
+    parser.add_argument(
+        "--fixes-dir",
+        type=Path,
+        default=None,
+        help="修正定義ファイルのディレクトリ（{name}.json を探す。省略時は修正適用を行わない）",
+    )
     return parser.parse_args(argv)
 
 
@@ -527,6 +674,8 @@ def main(argv: list[str] | None = None) -> int:
                 f"{r.name}: PASS pages={r.pages} blocks={r.blocks} "
                 f"replaced={r.replaced_md}+{r.replaced_json} "
                 f"tables={r.tables}+{r.tables_skipped}skipped "
+                f"footnotes={r.footnotes}+{r.footnotes_skipped}skipped "
+                f"fixes={r.fixes_applied}+{r.fixes_skipped}skipped "
                 f"({minutes}分{seconds}秒)"
             )
         else:
