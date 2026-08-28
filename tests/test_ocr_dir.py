@@ -998,3 +998,204 @@ def test_main_pass_line_includes_fixes(monkeypatch, capsys, tmp_path: Path) -> N
 
     captured = capsys.readouterr()
     assert "fixes=1+0skipped" in captured.out
+
+
+# --- feat-012: final ディレクトリ構築 --------------------------------------
+
+
+def test_parse_colorize_summary() -> None:
+    stdout = "blocks=12 unique=10 outdir=/x\n"
+    assert ocr_dir.parse_colorize_summary(stdout) == (12, 10)
+    assert ocr_dir.parse_colorize_summary("not a summary line") is None
+
+
+def test_parse_final_summary() -> None:
+    assert ocr_dir.parse_final_summary("total: 1 built\n") is True
+    assert ocr_dir.parse_final_summary("total: 0 built\n") is False
+
+
+def test_process_dir_final_disabled_by_default(tmp_path: Path, monkeypatch) -> None:
+    d, root, args = _setup_process_dir_env(tmp_path, monkeypatch)
+
+    called = {"colorize": 0, "final": 0}
+
+    def fake_colorize_images(*a, **k):
+        called["colorize"] += 1
+        return [], 0
+
+    def fake_build_final(*a, **k):
+        called["final"] += 1
+        return []
+
+    monkeypatch.setattr(ocr_dir, "colorize_images", fake_colorize_images)
+    monkeypatch.setattr(ocr_dir, "build_final", fake_build_final)
+
+    result = ocr_dir.process_dir(d, root, args)
+
+    assert result.passed is True
+    assert called == {"colorize": 0, "final": 0}
+    assert result.images == 0
+
+
+def _stub_subprocess_run_with_final(page_text: str, page_content_list: str, calls: list):
+    """_setup_process_dir_env の stub_subprocess_run に
+    colorize_images.py / build_final.py の呼び出し捕捉を追加したもの。"""
+
+    def stub(cmd, capture_output=True, text=True, **kwargs):
+        class Result:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        if cmd and cmd[0] == "mineru":
+            pdf_path = Path(cmd[cmd.index("-p") + 1])
+            out_dir = Path(cmd[cmd.index("-o") + 1])
+            stem = pdf_path.stem
+            hybrid_dir = out_dir / stem / "hybrid_auto"
+            hybrid_dir.mkdir(parents=True, exist_ok=True)
+            (hybrid_dir / f"{stem}.md").write_text(page_text, encoding="utf-8")
+            (hybrid_dir / f"{stem}_content_list.json").write_text(
+                page_content_list, encoding="utf-8"
+            )
+            return Result()
+
+        if len(cmd) > 1 and "normalize_punct.py" in cmd[1]:
+            md_src = Path(cmd[2])
+            content_list_src = Path(cmd[3])
+            outdir = Path(cmd[cmd.index("-o") + 1])
+            outdir.mkdir(parents=True, exist_ok=True)
+            (outdir / md_src.name).write_text(
+                md_src.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            (outdir / content_list_src.name).write_text(
+                content_list_src.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            return Result()
+
+        if len(cmd) > 1 and "html_table_to_md.py" in cmd[1]:
+            result = Result()
+            result.stdout = (
+                "chap00_gray300.md: 0 converted, 0 skipped\n"
+                "total: 0 converted, 0 skipped in 1 files\n"
+            )
+            return result
+
+        if len(cmd) > 1 and "colorize_images.py" in cmd[1]:
+            calls.append(cmd)
+            result = Result()
+            outdir_arg = cmd[cmd.index("-o") + 1]
+            result.stdout = f"blocks=0 unique=0 outdir={outdir_arg}\n"
+            return result
+
+        if len(cmd) > 1 and "build_final.py" in cmd[1]:
+            calls.append(cmd)
+            result = Result()
+            result.stdout = "chap00_gray300: md=1 content_list=1 images=0\ntotal: 1 built\n"
+            return result
+
+        return Result()
+
+    return stub
+
+
+def test_process_dir_final_invokes_both(tmp_path: Path, monkeypatch) -> None:
+    d, root, args = _setup_process_dir_env(tmp_path, monkeypatch, ["--final"])
+
+    calls: list = []
+    page_text = "本文"
+    page_content_list = json.dumps(
+        [{"page_idx": 0, "type": "text", "text": page_text}]
+    )
+    monkeypatch.setattr(
+        ocr_dir.subprocess,
+        "run",
+        _stub_subprocess_run_with_final(page_text, page_content_list, calls),
+    )
+
+    result = ocr_dir.process_dir(d, root, args)
+
+    assert result.passed is True
+    assert len(calls) == 2
+    assert "colorize_images.py" in calls[0][1]
+    assert "--overwrite" in calls[0]
+    assert "build_final.py" in calls[1][1]
+    assert "--overwrite" in calls[1]
+
+
+def test_process_dir_final_output_paths(tmp_path: Path, monkeypatch) -> None:
+    d, root, args = _setup_process_dir_env(tmp_path, monkeypatch, ["--final"])
+
+    calls: list = []
+    page_text = "本文"
+    page_content_list = json.dumps(
+        [{"page_idx": 0, "type": "text", "text": page_text}]
+    )
+    monkeypatch.setattr(
+        ocr_dir.subprocess,
+        "run",
+        _stub_subprocess_run_with_final(page_text, page_content_list, calls),
+    )
+
+    result = ocr_dir.process_dir(d, root, args)
+
+    assert result.passed is True
+    build_final_cmd = calls[1]
+    outdir_index = build_final_cmd.index("-o") + 1
+    assert Path(build_final_cmd[outdir_index]) == root / "final" / "chap00"
+
+
+def test_process_dir_colorize_failure_fails_dir(tmp_path: Path, monkeypatch) -> None:
+    d, root, args = _setup_process_dir_env(tmp_path, monkeypatch, ["--final"])
+
+    monkeypatch.setattr(
+        ocr_dir, "colorize_images", lambda *a, **k: (["カラー再切出失敗: boom"], 0)
+    )
+
+    result = ocr_dir.process_dir(d, root, args)
+
+    assert result.passed is False
+    assert any("カラー再切出失敗" in reason for reason in result.reasons)
+
+
+def test_process_dir_final_failure_fails_dir(tmp_path: Path, monkeypatch) -> None:
+    d, root, args = _setup_process_dir_env(tmp_path, monkeypatch, ["--final"])
+
+    monkeypatch.setattr(ocr_dir, "colorize_images", lambda *a, **k: ([], 3))
+    monkeypatch.setattr(ocr_dir, "build_final", lambda *a, **k: ["final 構築失敗: boom"])
+
+    result = ocr_dir.process_dir(d, root, args)
+
+    assert result.passed is False
+    assert any("final 構築失敗" in reason for reason in result.reasons)
+
+
+def test_summary_includes_images(monkeypatch, capsys, tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    d = tmp_path / "chap00"
+    d.mkdir()
+
+    fake_result = ocr_dir.DirResult(
+        name="chap00",
+        passed=True,
+        reasons=[],
+        pages=1,
+        blocks=1,
+        replaced_md=0,
+        replaced_json=0,
+        seconds=1.0,
+        tables=1,
+        tables_skipped=0,
+        footnotes=2,
+        footnotes_skipped=1,
+        fixes_applied=1,
+        fixes_skipped=0,
+        images=7,
+    )
+
+    monkeypatch.setattr(ocr_dir, "process_dir", lambda d, root, args: fake_result)
+
+    ret = ocr_dir.main([str(d), "-o", str(root)])
+    assert ret == 0
+
+    captured = capsys.readouterr()
+    assert "images=7" in captured.out

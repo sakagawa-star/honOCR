@@ -45,7 +45,7 @@
 
 - **スキャン原本**: `{BASE2}/dewarping/chapNN/out/`（NN = 00〜09）の `page-NN_{1L,2R}.tif` 計383枚（chap00 は前付け、chap09 は付録ABC・参考文献・目次・索引）。仕様は PRML と同条件（600dpi・LZW 可逆・白紙のみ 1-bit G4）だが**大半がグレースケール**（`L`）。`out/cache/` は glob 対象外
 - **句読点スタイルは「、。」**のため、OCR 時は必ず `--punct-style touten` を指定する（feat-011）
-- 2026-08-28 時点で chap07（18ページ）のみ検証実行済み（`{BASE2}/ocr/`）。**全章の本処理と final 構築は未実施**
+- 2026-08-28 時点で chap07（18ページ）のみ実行済み（`{BASE2}/ocr/` に入力PDF・MinerU 出力・正規化済み出力・`final/chap07/` がある）。**残り9章の本処理は未実施**
 
 ## ディレクトリ構成（主要部分）
 
@@ -76,7 +76,8 @@ honOCR/
 │   ├── insert_footnotes.py # content_list の脚注（page_footnote）を md に挿入する CLI（feat-009）
 │   ├── apply_fixes.py      # 修正定義ファイル（old→new）を md に機械適用する CLI（feat-010）
 │   ├── ocr_dir.py          # OCR 一括実行 CLI: PDF生成→MinerU→正規化→機械確認→HTML表変換→脚注挿入→修正適用（feat-006, 008, 009, 010）
-│   └── colorize_images.py  # 図画像のカラー再切出 CLI（feat-007）
+│   ├── colorize_images.py  # 図画像のカラー再切出 CLI（feat-007）
+│   └── build_final.py      # final ディレクトリ構築 CLI: 集約＋3種類の機械検証（feat-012）
 └── tests/
     ├── test_env.py         # 環境スモークテスト（feat-001）
     ├── test_make_ocr_pdf.py  # 変換スクリプトのテスト（feat-002）
@@ -86,6 +87,7 @@ honOCR/
     ├── test_apply_fixes.py # 修正適用スクリプトのテスト（feat-010）
     ├── test_ocr_dir.py     # 一括実行スクリプトのテスト（feat-006）
     ├── test_colorize_images.py  # カラー再切出スクリプトのテスト（feat-007）
+    ├── test_build_final.py  # final 構築スクリプトのテスト（feat-012）
     └── results/            # テスト結果の保存先
 ```
 
@@ -101,10 +103,11 @@ honOCR/
 - 本環境はプロキシ必須（大学ネットワーク）。MinerU 実行時は `no_proxy`/`NO_PROXY` に `localhost,127.0.0.1` を追加しないとローカルAPIヘルスチェックが 502 で失敗する
 - MinerU の出力は句読点スタイルが揺れる（原本「，．」の約15%が「、。」に置換される。feat-003 で実測）。`scripts/normalize_punct.py` による「、→，」「。→．」の全文置換後処理で解消する（feat-004。MinerU 変換後は必ず適用する）。**この置換は書籍の句読点スタイルに依存する**ため `--punct-style {comma,touten}` で選ぶ（feat-011。既定 `comma` = 置換する。PRML 用。「、。」を用いる書籍（例: 『プログラミングのための確率統計』）には `touten` を指定し、置換しない）
 - MinerU は日本語字のかわりに中国語字（簡体字・繁体字）を出すことがある。`normalize_punct.py` は句読点スタイルによらず8種（值→値・变→変・单→単・对→対・图→図・换→換・徵→徴・樣→様）を常時置換する（feat-011。PRML final にも md 13件・content_list 23件の混入が実測された）。字形対応が成立しない誤認識（例: 「濵習」→演習、「跺な解」→疎な解）は置換せず、**正規化後に残る JIS X 0208 外の漢字を標準エラーへ警告**するので、`apply_fixes.py` の修正定義ファイルで対処する
-- OCR の一括実行（feat-006）: `uv run python scripts/ocr_dir.py <TIFディレクトリ> -o <出力ルート> [--punct-style {comma,touten}]` で PDF 生成 → MinerU → 正規化 → 機械確認 → HTML表変換 → 脚注挿入 → 修正適用（`--fixes-dir` 指定時）まで1コマンド（ユーザーが Claude Code なしで実行できる）。入力PDF には manifest（TIF のパス・サイズ・mtime）が付き、一致時のみ再利用される。`--punct-style` は正規化と機械確認の両方に効く（feat-011。指定を誤ると機械確認が FAIL するため取り違えは検出される）。**images/ はこのパイプラインの対象外**で、`final/` の構築（images のコピー＋ `colorize_images.py` によるカラー再切出）は別途手作業で行う
+- OCR の一括実行（feat-006）: `uv run python scripts/ocr_dir.py <TIFディレクトリ> -o <出力ルート> [--punct-style {comma,touten}]` で PDF 生成 → MinerU → 正規化 → 機械確認 → HTML表変換 → 脚注挿入 → 修正適用（`--fixes-dir` 指定時）まで1コマンド（ユーザーが Claude Code なしで実行できる）。入力PDF には manifest（TIF のパス・サイズ・mtime）が付き、一致時のみ再利用される。`--punct-style` は正規化と機械確認の両方に効く（feat-011。指定を誤ると機械確認が FAIL するため取り違えは検出される）。`--final` を付けると、修正適用の直後に「カラー再切出 → `final/{name}/` 構築」まで実行する（feat-012。既定は行わない。**章単位**で構築するため、後続の章が FAIL しても完成済みの final は残る）
 - MinerU は表を Markdown 中に **1行の HTML `<table>`** として出力する。CommonMark では HTML ブロック内の `$…$` が数式描画されないため（VS Code プレビューで表内数式が LaTeX ソースのまま表示される）、`uv run python scripts/html_table_to_md.py <md> -o <出力先> [--overwrite]` で GFM パイプテーブルに変換する（feat-008。`ocr_dir.py` に組み込み済みのため通常は個別実行不要。`colspan` 等の複雑な表は壊さずスキップして警告。content_list の `table_body` は MinerU スキーマ維持のため無改変）
 - MinerU は脚注（訳注）を content_list の `page_footnote` 型ブロックにのみ出力し、**Markdown には含めない**。`uv run python scripts/insert_footnotes.py <md> <content_list> -o <出力先> [--overwrite]` で md の該当ページ本文末尾の直後に blockquote（`> 4 訳注：…`）として挿入する（feat-009。`ocr_dir.py` に組み込み済みのため通常は個別実行不要。冪等・content_list 無改変。脚注ブロックは断片化・読み順乱れがあるため「断片除去 → bbox 読み順ソート → 番号プレフィックス結合」で組み立てる）。番号プレフィックスは数字・上付き数字に加え `*N` / `\*N` / `$^{N}$` / `$^{*N}$` を認識し、断片判定の比較キーは空白・`$`・`\` を除去して行う（feat-011）
-- MinerU content_list の `bbox` は 0–1000 正規化座標（ページ左上原点）。図ブロック（img_path を持つ image/chart/table）は `uv run python scripts/colorize_images.py <content_list> <TIFディレクトリ> -o <images出力先>` で原本 TIF からカラー再切出できる（feat-007。既定 1/3 縮小 = 旧画像と同等の表示サイズ。MinerU の生成画像はグレースケール PDF 由来のため必ず適用する）
+- MinerU content_list の `bbox` は 0–1000 正規化座標（ページ左上原点）。図ブロック（img_path を持つ image/chart/table）は `uv run python scripts/colorize_images.py <content_list> <TIFディレクトリ> -o <images出力先>` で原本 TIF からカラー再切出できる（feat-007。既定 1/3 縮小 = 旧画像と同等の表示サイズ。MinerU の生成画像はグレースケール PDF 由来のため必ず適用する。`ocr_dir.py --final` に組み込み済みのため通常は個別実行不要）
+- 最終成果物 `final/{name}/`（md＋content_list.json＋images/）は `uv run python scripts/build_final.py <run-NN-normalized> -o <final/chapNN> [--overwrite]` で構築する（feat-012。`ocr_dir.py --final` に組み込み済みのため通常は個別実行不要）。コピー後に3種類の機械検証（バイト同一・md の画像参照が images/ に存在・content_list の `img_path` 集合と images/ の**完全一致**）を行い、1つでも不合格なら終了コード 1。再構築時は `images/` の孤児ファイルを削除する。**出力先がコピー元と同一・入れ子、または出力先やその images/ がシンボリックリンクの場合は書き込み前に拒否する**（コピー元の成果物を壊さないため）
 - OCR の個別誤り（例: 式番号と式の誤結合。MinerU の layout 解析起因で再OCRでも再発する）は final を直接編集せず、`{BASE}/ocr/fixes/{name}.json` に old→new の修正として登録し `uv run python scripts/apply_fixes.py <md> <fixes.json> -o <出力先> --overwrite` で適用する（feat-010。書式は `fixes/template.json`・`fixes/README.md` 参照。old 不在・複数一致は全件エラーで出力なし＝再OCRで文面が変わると検出できる。冪等。**定義ファイルの実体は書籍本文を含むためコミット禁止**）
 
 ## 開発方針

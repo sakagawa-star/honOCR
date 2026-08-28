@@ -48,6 +48,7 @@ class DirResult:
     footnotes_skipped: int = 0
     fixes_applied: int = 0
     fixes_skipped: int = 0
+    images: int = 0
 
 
 def derive_name(d: Path) -> str:
@@ -320,6 +321,87 @@ def apply_fixes(
     return [], applied, skipped
 
 
+def parse_colorize_summary(stdout: str) -> tuple[int, int] | None:
+    """colorize_images.py の出力から (blocks, unique) を読み取る。"""
+    m = re.search(
+        r"^blocks=(\d+) unique=(\d+) outdir=.+$",
+        stdout,
+        re.MULTILINE,
+    )
+    if m is None:
+        return None
+    return int(m.group(1)), int(m.group(2))
+
+
+def colorize_images(
+    normalized_content_list: Path, tif_dir: Path, images_dir: Path
+) -> tuple[list[str], int]:
+    """正規化済み content_list の図ブロックを原本 TIF からカラー再切出する。
+
+    戻り値は (エラーメッセージのリスト, 生成枚数)。
+    """
+    cmd = [
+        sys.executable,
+        str(SCRIPTS_DIR / "colorize_images.py"),
+        str(normalized_content_list),
+        str(tif_dir),
+        "-o",
+        str(images_dir),
+        "--overwrite",
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+
+    if proc.returncode != 0:
+        return [f"カラー再切出失敗: {proc.stderr.strip()}"], 0
+
+    summary = parse_colorize_summary(proc.stdout)
+    if summary is None:
+        return [f"カラー再切出失敗: summary parse failed: {proc.stdout.strip()}"], 0
+
+    if proc.stderr.strip():
+        print(proc.stderr.strip(), file=sys.stderr)
+
+    _blocks, unique = summary
+    return [], unique
+
+
+def parse_final_summary(stdout: str) -> bool:
+    """build_final.py の出力に `total: 1 built` があるかを返す。"""
+    m = re.search(
+        r"^total: 1 built$",
+        stdout,
+        re.MULTILINE,
+    )
+    return m is not None
+
+
+def build_final(normalized_dir: Path, final_dir: Path) -> list[str]:
+    """正規化済みディレクトリから final ディレクトリを構築する。
+
+    戻り値はエラーメッセージのリスト（空 = 成功）。
+    """
+    cmd = [
+        sys.executable,
+        str(SCRIPTS_DIR / "build_final.py"),
+        str(normalized_dir),
+        "-o",
+        str(final_dir),
+        "--overwrite",
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+
+    if proc.returncode != 0:
+        return [f"final 構築失敗: {proc.stderr.strip()}"]
+
+    if not parse_final_summary(proc.stdout):
+        return [f"final 構築失敗: summary parse failed: {proc.stdout.strip()}"]
+
+    if proc.stderr.strip():
+        print(proc.stderr.strip(), file=sys.stderr)
+
+    return []
+
+
 def _fail(name: str, reasons: list[str], start: float, pages: int = 0, blocks: int = 0,
           replaced_md: int = 0, replaced_json: int = 0) -> DirResult:
     """不合格の DirResult を作る（理由を標準エラーに出力する）。"""
@@ -589,6 +671,22 @@ def process_dir(d: Path, root: Path, args: argparse.Namespace) -> DirResult:
                     replaced_json=replaced_json,
                 )
 
+    images = 0
+    if args.final:
+        print(f"[{name}] カラー再切出中...")
+        images_dir = normalized_dir / "images"
+        cz_errors, images = colorize_images(normalized_content_list, d, images_dir)
+        if cz_errors:
+            return _fail(name, cz_errors, start, pages=page_count, blocks=blocks,
+                         replaced_md=replaced_md, replaced_json=replaced_json)
+
+        print(f"[{name}] final 構築中...")
+        final_dir = root / "final" / name
+        bf_errors = build_final(normalized_dir, final_dir)
+        if bf_errors:
+            return _fail(name, bf_errors, start, pages=page_count, blocks=blocks,
+                         replaced_md=replaced_md, replaced_json=replaced_json)
+
     elapsed = time.monotonic() - start
     print(f"[{name}] 完了: PASS ({elapsed:.1f}秒)")
     return DirResult(
@@ -605,6 +703,7 @@ def process_dir(d: Path, root: Path, args: argparse.Namespace) -> DirResult:
         footnotes_skipped=footnotes_skipped,
         fixes_applied=fixes_applied,
         fixes_skipped=fixes_skipped,
+        images=images,
         seconds=elapsed,
     )
 
@@ -662,6 +761,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=normalize_punct.DEFAULT_PUNCT_STYLE,
         help="句読点スタイル（comma: 、。→，．に置換 / touten: 句読点を置換しない。既定 comma）",
     )
+    parser.add_argument(
+        "--final",
+        action="store_true",
+        help="カラー再切出と final ディレクトリ構築（{root}/final/{name}/）を行う（既定は行わない）",
+    )
     return parser.parse_args(argv)
 
 
@@ -697,6 +801,7 @@ def main(argv: list[str] | None = None) -> int:
                 f"tables={r.tables}+{r.tables_skipped}skipped "
                 f"footnotes={r.footnotes}+{r.footnotes_skipped}skipped "
                 f"fixes={r.fixes_applied}+{r.fixes_skipped}skipped "
+                f"images={r.images} "
                 f"({minutes}分{seconds}秒)"
             )
         else:

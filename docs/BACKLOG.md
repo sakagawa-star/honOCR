@@ -23,3 +23,4 @@
 | feat-009 | MinerU 出力から欠落する脚注（訳注）の Markdown 挿入（insert_footnotes.py） | Closed | 2026-08-25 完了。MinerU が md に出力しない page_footnote 型（chap01=訳注1〜13 等）を content_list から組み立てて挿入。既存データ適用済み・ocr_dir.py 組み込み済み。ユーザー手動テストで注釈4・5 の表示を確認。案件フォルダ: feat-009-insert-footnotes |
 | feat-010 | 手動修正の永続化: 修正定義ファイルの機械適用（apply_fixes.py） | Closed | 2026-08-25 完了。修正を old→new の定義ファイル（{BASE}/ocr/fixes/、リポジトリ外）として管理しパイプライン最終段で機械適用。初期データとして式番号誤結合5件を修正・適用済み。ユーザー実データ確認済み。案件フォルダ: feat-010-apply-fixes |
 | feat-011 | 他書籍対応: 正規化・脚注処理の一般化（句読点スタイル選択・中国語字正規化・脚注 `*N` 対応） | Closed | 2026-08-28 完了。第2の書籍『プログラミングのための確率統計』の OCR 化に向けた一般化。`--punct-style {comma,touten}`・中国語字8種の字形正規化・JIS 外漢字の警告・脚注 `*N` 対応。ユーザー手動テスト済み。案件フォルダ: feat-011-multi-book-normalization |
+| feat-012 | final ディレクトリ構築の自動化（build_final.py） | Closed | 2026-08-28 完了。feat-005 で手作業だった「カラー再切出 → final/chapNN/ への集約 → 検証」を CLI 化し、ocr_dir.py に `--final` として章単位で組み込んだ。PRML 8章で既存 final とバイト同一を確認。ユーザー実機テスト済み。案件フォルダ: feat-012-build-final |

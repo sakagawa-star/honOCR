@@ -47,12 +47,12 @@ uv sync
 TIF ディレクトリから最終 Markdown 生成までを 1 コマンドで実行する:
 
 ```bash
-uv run python scripts/ocr_dir.py <TIFディレクトリ>... -o <出力ルート> [--punct-style {comma,touten}] [--fixes-dir <修正定義ディレクトリ>]
+uv run python scripts/ocr_dir.py <TIFディレクトリ>... -o <出力ルート> [--punct-style {comma,touten}] [--fixes-dir <修正定義ディレクトリ>] [--final]
 ```
 
-処理内容: 入力 PDF 生成 → MinerU → 句読点正規化・字形正規化 → 機械確認 → HTML 表変換 → 脚注挿入 → 修正適用（`--fixes-dir` 指定時のみ）。
+処理内容: 入力 PDF 生成 → MinerU → 句読点正規化・字形正規化 → 機械確認 → HTML 表変換 → 脚注挿入 → 修正適用（`--fixes-dir` 指定時のみ）→ カラー再切出・final 構築（`--final` 指定時のみ）。
 
-図画像はこのパイプラインの対象外で、正規化済み出力（`run-NN-normalized/`）には Markdown と content_list.json だけが置かれる。画像込みの成果物を作る場合は `colorize_images.py` で `images/` を生成する。
+`--final` を付けると、章の処理が終わるたびにその章の最終成果物 `final/{name}/`（Markdown＋content_list.json＋images/）が作られる。章単位で構築するため、後続の章が失敗しても完成済みの final は残る。付けない場合は正規化済み出力（`run-NN-normalized/`）までで止まり、Markdown と content_list.json だけが置かれる（`![](images/…)` の参照は解決されない）。
 
 主なオプション:
 
@@ -65,6 +65,7 @@ uv run python scripts/ocr_dir.py <TIFディレクトリ>... -o <出力ルート>
 | `--timeout` | MinerU のタイムアウト（分） | 60 |
 | `--fixes-dir` | 修正定義ファイルのディレクトリ（`{name}.json` を探す） | なし（修正適用を行わない） |
 | `--punct-style` | 書籍の句読点スタイル。`comma` = 「、。」を「，．」へ置換／`touten` = 句読点を置換しない | `comma` |
+| `--final` | カラー再切出と `final/{name}/` の構築まで行う | 行わない |
 
 入力 PDF には manifest（TIF のパス・サイズ・mtime）が付き、一致時のみ再利用される。
 
@@ -123,6 +124,20 @@ uv run python scripts/colorize_images.py <content_list> <TIFディレクトリ> 
 ```
 
 content_list の bbox（0–1000 正規化座標）を使い、原本 TIF から図ブロックをカラーで切り出す。縮小率の既定は 1/3（旧画像と同等の表示サイズ）、`--scale 1.0` で原寸。MinerU の生成画像はグレースケール PDF 由来のため必ず適用する。
+
+#### final ディレクトリの構築（`build_final.py`）
+
+```bash
+uv run python scripts/build_final.py <正規化済みディレクトリ> -o <final出力先> [--overwrite]
+```
+
+正規化済み出力（`run-NN-normalized/`）の Markdown・content_list.json・`images/` を final ディレクトリへコピーし、3種類の機械検証を行う。
+
+- コピー元とのバイト同一
+- Markdown が参照する画像がすべて `images/` に存在すること
+- content_list の `img_path` の集合と `images/` のファイル集合が完全に一致すること
+
+いずれか1つでも不合格なら終了コード 1 を返す。再構築時は `images/` の孤児ファイル（コピー元に無いもの）を削除する。出力先がコピー元と同一・入れ子になる指定や、出力先がシンボリックリンクである場合は、コピー元を壊さないよう書き込み前に拒否する。
 
 ## テスト
 
