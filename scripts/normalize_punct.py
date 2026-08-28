@@ -1,27 +1,95 @@
 """句読点正規化スクリプト。
 
 MinerU 出力（Markdown・JSON）内の句読点「、」「。」を原本のスタイル
-「，」「．」へ置換する。詳細は
-docs/issues/feat-004-punct-normalize/design.md を参照。
+「，」「．」へ置換する（comma スタイル書籍向け）。また、MinerU が出力する
+中国語字（簡体字・繁体字）を対応する日本語字へ常時置換し、規則化できない
+残存 JIS 外漢字を警告する。詳細は
+docs/issues/feat-004-punct-normalize/design.md および
+docs/issues/feat-011-multi-book-normalization/design.md を参照。
 """
 
 from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
 
-REPLACEMENTS: dict[str, str] = {"、": "，", "。": "．"}
-TRANSLATION_TABLE = str.maketrans(REPLACEMENTS)
+PUNCT_STYLES: tuple[str, ...] = ("comma", "touten")
+DEFAULT_PUNCT_STYLE: str = "comma"
+
+PUNCT_REPLACEMENTS: dict[str, dict[str, str]] = {
+    "comma": {"、": "，", "。": "．"},
+    "touten": {},
+}
+
+CJK_REPLACEMENTS: dict[str, str] = {
+    "值": "値",
+    "变": "変",
+    "单": "単",
+    "对": "対",
+    "图": "図",
+    "换": "換",
+    "徵": "徴",
+    "樣": "様",
+}
+
+CJK_RE: re.Pattern[str] = re.compile(r"[一-鿿]")
+CONTEXT_CHARS: int = 25
 
 
-def normalize_text(text: str) -> tuple[str, int]:
+def build_replacements(punct_style: str = DEFAULT_PUNCT_STYLE) -> dict[str, str]:
+    """句読点置換（スタイル依存）と字形置換（常時）を合成した置換表を返す。"""
+    return PUNCT_REPLACEMENTS[punct_style] | CJK_REPLACEMENTS
+
+
+def normalize_text(
+    text: str, punct_style: str = DEFAULT_PUNCT_STYLE
+) -> tuple[str, int]:
     """置換後テキストと置換件数を返す。"""
-    count = sum(text.count(src) for src in REPLACEMENTS)
-    normalized = text.translate(TRANSLATION_TABLE)
+    replacements = build_replacements(punct_style)
+    count = sum(text.count(src) for src in replacements)
+    normalized = text.translate(str.maketrans(replacements))
     return normalized, count
+
+
+def is_jis_x0208(ch: str) -> bool:
+    """文字が JIS X 0208 で表現できるかを返す。"""
+    try:
+        ch.encode("shift_jis")
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
+def find_non_jis_kanji(text: str) -> dict[str, tuple[int, str]]:
+    """JIS 外漢字 -> (出現件数, 最初の出現箇所の文脈) を返す。"""
+    chars = set(CJK_RE.findall(text))
+    found: dict[str, tuple[int, str]] = {}
+    for ch in chars:
+        if is_jis_x0208(ch):
+            continue
+        count = text.count(ch)
+        pos = text.find(ch)
+        context = text[max(0, pos - CONTEXT_CHARS):pos + CONTEXT_CHARS + 1]
+        context = context.replace("\n", " ").replace("\r", " ")
+        found[ch] = (count, context)
+    return found
+
+
+def format_non_jis_warning(name: str, found: dict[str, tuple[int, str]]) -> list[str]:
+    """警告行のリストを返す（found が空なら空リスト）。"""
+    if not found:
+        return []
+
+    total = sum(count for count, _ in found.values())
+    lines = [f"{name}: JIS外漢字 {len(found)} 種 {total} 件"]
+    for ch in sorted(found):
+        count, context = found[ch]
+        lines.append(f"  '{ch}' x{count}: ...{context}...")
+    return lines
 
 
 def validate_inputs(files: list[Path], outdir: Path, overwrite: bool) -> list[str]:
@@ -108,6 +176,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="出力先の同名ファイルが既存でも上書きする（既定は拒否）",
     )
+    parser.add_argument(
+        "--punct-style",
+        choices=PUNCT_STYLES,
+        default=DEFAULT_PUNCT_STYLE,
+        help="句読点スタイル（comma: 、。→，．に置換 / touten: 句読点を置換しない。既定 comma）",
+    )
     return parser.parse_args(argv)
 
 
@@ -127,7 +201,7 @@ def main(argv: list[str] | None = None) -> int:
     total = 0
     for file_path in files:
         text = file_path.read_text(encoding="utf-8")
-        normalized, count = normalize_text(text)
+        normalized, count = normalize_text(text, args.punct_style)
         output_path = outdir / file_path.name
 
         try:
@@ -135,6 +209,9 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as exc:
             print(str(exc), file=sys.stderr)
             return 1
+
+        for warning_line in format_non_jis_warning(file_path.name, find_non_jis_kanji(normalized)):
+            print(warning_line, file=sys.stderr)
 
         print(f"{file_path.name}: {count} replaced")
         total += count

@@ -389,3 +389,89 @@ def test_cli_invalid_json(tmp_path: Path, capsys) -> None:
     assert ret == 1
     captured = capsys.readouterr()
     assert captured.err.strip() != ""
+
+
+# --- feat-011: 脚注プレフィックス・断片判定の拡張 ---------------------------
+
+
+def test_assemble_asterisk_prefix_splits_notes() -> None:
+    blocks = [
+        {"text": "\\*2 参考文献 [8] の…", "bbox": [0, 0, 10, 10]},
+        {"text": "$^{3}$ ただし精度という…", "bbox": [0, 20, 10, 30]},
+    ]
+
+    notes = insert_footnotes.assemble_notes(blocks)
+
+    assert notes == ["\\*2 参考文献 [8] の…", "$^{3}$ ただし精度という…"]
+
+
+def test_assemble_asterisk_without_backslash() -> None:
+    blocks = [
+        {"text": "*4 本文", "bbox": [0, 0, 10, 10]},
+    ]
+
+    notes = insert_footnotes.assemble_notes(blocks)
+
+    assert notes == ["*4 本文"]
+
+
+def test_assemble_superscript_math_prefix() -> None:
+    blocks = [
+        {"text": "$^{*4}$ 本文", "bbox": [0, 0, 10, 10]},
+    ]
+
+    notes = insert_footnotes.assemble_notes(blocks)
+
+    assert notes == ["$^{*4}$ 本文"]
+
+
+def test_assemble_page_ref_superscript_not_prefix() -> None:
+    blocks = [
+        {"text": "1 本文", "bbox": [0, 0, 10, 10]},
+        {"text": "$^{(p.128)}$ 続き", "bbox": [0, 20, 10, 30]},
+    ]
+
+    notes = insert_footnotes.assemble_notes(blocks)
+
+    assert notes == ["1 本文 $^{(p.128)}$ 続き"]
+
+
+def test_assemble_fragment_with_math_removed() -> None:
+    blocks = [
+        {
+            "text": "\\*4 厳密に言えば、$[0,1)$ でなく $(0,1]$ とすべき",
+            "bbox": [0, 0, 10, 10],
+        },
+        {"text": "[0,1) でなく (0,1]", "bbox": [0, 5, 10, 8]},
+    ]
+
+    notes = insert_footnotes.assemble_notes(blocks)
+
+    assert notes == ["\\*4 厳密に言えば、$[0,1)$ でなく $(0,1]$ とすべき"]
+
+
+def test_assemble_keeps_original_text() -> None:
+    blocks = [
+        {"text": "\\*4 厳密に言えば、$[0,1)$ でなく $(0,1]$ とすべき", "bbox": [0, 0, 10, 10]},
+    ]
+
+    notes = insert_footnotes.assemble_notes(blocks)
+
+    assert notes == ["\\*4 厳密に言えば、$[0,1)$ でなく $(0,1]$ とすべき"]
+    assert "$" in notes[0]
+    assert "\\" in notes[0]
+
+
+def test_assemble_empty_key_block_kept() -> None:
+    blocks = [
+        {"text": "1 本文", "bbox": [0, 0, 10, 10]},
+        {"text": "$$", "bbox": [0, 20, 10, 30]},
+    ]
+
+    notes = insert_footnotes.assemble_notes(blocks)
+
+    assert notes == ["1 本文 $$"]
+
+
+def test_comparison_key() -> None:
+    assert insert_footnotes.comparison_key("a $b$ \\c") == "abc"

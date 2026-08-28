@@ -47,10 +47,12 @@ uv sync
 TIF ディレクトリから最終 Markdown 生成までを 1 コマンドで実行する:
 
 ```bash
-uv run python scripts/ocr_dir.py <TIFディレクトリ>... -o <出力ルート> [--fixes-dir <修正定義ディレクトリ>]
+uv run python scripts/ocr_dir.py <TIFディレクトリ>... -o <出力ルート> [--punct-style {comma,touten}] [--fixes-dir <修正定義ディレクトリ>]
 ```
 
-処理内容: 入力 PDF 生成 → MinerU → 句読点正規化 → 機械確認 → HTML 表変換 → 脚注挿入 → 修正適用（`--fixes-dir` 指定時のみ）。
+処理内容: 入力 PDF 生成 → MinerU → 句読点正規化・字形正規化 → 機械確認 → HTML 表変換 → 脚注挿入 → 修正適用（`--fixes-dir` 指定時のみ）。
+
+図画像はこのパイプラインの対象外で、正規化済み出力（`run-NN-normalized/`）には Markdown と content_list.json だけが置かれる。画像込みの成果物を作る場合は `colorize_images.py` で `images/` を生成する。
 
 主なオプション:
 
@@ -62,6 +64,7 @@ uv run python scripts/ocr_dir.py <TIFディレクトリ>... -o <出力ルート>
 | `--overwrite-pdf` | 既存の入力 PDF を作り直す | manifest 検証の上で再利用 |
 | `--timeout` | MinerU のタイムアウト（分） | 60 |
 | `--fixes-dir` | 修正定義ファイルのディレクトリ（`{name}.json` を探す） | なし（修正適用を行わない） |
+| `--punct-style` | 書籍の句読点スタイル。`comma` = 「、。」を「，．」へ置換／`touten` = 句読点を置換しない | `comma` |
 
 入力 PDF には manifest（TIF のパス・サイズ・mtime）が付き、一致時のみ再利用される。
 
@@ -80,10 +83,14 @@ uv run python scripts/make_ocr_pdf.py <TIF>... -o <出力PDF> [--overwrite]
 #### 句読点正規化（`normalize_punct.py`）
 
 ```bash
-uv run python scripts/normalize_punct.py <ファイル>... -o <出力ディレクトリ> [--overwrite]
+uv run python scripts/normalize_punct.py <ファイル>... -o <出力ディレクトリ> [--punct-style {comma,touten}] [--overwrite]
 ```
 
-MinerU 出力で揺れる句読点を「、→，」「。→．」に全文置換する。MinerU 変換後は必ず適用する。
+MinerU 出力の表記揺れを正す。MinerU 変換後は必ず適用する。
+
+- **句読点**: `--punct-style comma`（既定）で「、→，」「。→．」に全文置換する。原本が「、。」を用いる書籍では `--punct-style touten` を指定し、置換を行わない
+- **字形**: MinerU が日本語字のかわりに出力する中国語字 8 種（值→値・变→変・单→単・对→対・图→図・换→換・徵→徴・樣→様）を、句読点スタイルによらず常に置換する
+- **警告**: 置換後も残る JIS X 0208 外の漢字を標準エラーへ報告する（字形の対応関係が成立しない個別の誤認識。`apply_fixes.py` で対処する）
 
 #### HTML 表 → GFM パイプテーブル変換（`html_table_to_md.py`）
 
@@ -99,7 +106,7 @@ MinerU が Markdown 中に 1 行の HTML `<table>` として出す表を GFM パ
 uv run python scripts/insert_footnotes.py <md> <content_list> -o <出力ディレクトリ> [--overwrite]
 ```
 
-MinerU が content_list の `page_footnote` ブロックにのみ出力する脚注を、md の該当ページ本文末尾の直後に blockquote として挿入する。冪等で、content_list は無改変。
+MinerU が content_list の `page_footnote` ブロックにのみ出力する脚注を、md の該当ページ本文末尾の直後に blockquote として挿入する。冪等で、content_list は無改変。脚注番号は数字・上付き数字・`*N`・`$^{N}$` の各形式を認識する。
 
 #### 手動修正の適用（`apply_fixes.py`）
 

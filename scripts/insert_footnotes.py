@@ -17,8 +17,21 @@ from pathlib import Path
 import html_table_to_md
 import normalize_punct
 
-NUM_PREFIX_RE = re.compile(r"^(?:\d+|[⁰¹²³⁴⁵⁶⁷⁸⁹]+)\s")
-WS_RE = re.compile(r"\s+")
+NUM_PREFIX_RE = re.compile(
+    r"^(?:"
+    r"\d+"                        # 例: "4 "
+    r"|[⁰¹²³⁴⁵⁶⁷⁸⁹]+"            # 例: "⁴ "
+    r"|\\?\*\d+"                  # 例: "*4 " / "\*4 "（Markdown エスケープ）
+    r"|\$\^\{\*?\d+\}\$"          # 例: "$^{3}$ " / "$^{*4}$ "
+    r")\s"
+)
+
+KEY_STRIP_RE = re.compile(r"[\s$\\]+")
+
+
+def comparison_key(text: str) -> str:
+    """断片判定に用いる比較キー（空白・`$`・`\\` を除去した文字列）を返す。"""
+    return KEY_STRIP_RE.sub("", text)
 
 TEXT_LIKE_TYPES = ("text", "ref_text", "equation")
 IMAGE_LIKE_TYPES = ("image", "chart")
@@ -107,14 +120,16 @@ def assemble_notes(blocks: list[dict]) -> list[str]:
         items.append({"text": text, "bbox": bbox})
 
     n = len(items)
-    stripped = [WS_RE.sub("", it["text"]) for it in items]
+    keys = [comparison_key(it["text"]) for it in items]
 
     is_fragment = [False] * n
     for i in range(n):
+        if keys[i] == "":          # 追加: 空キーは他の任意文字列の部分文字列になってしまう
+            continue
         for j in range(n):
             if i == j:
                 continue
-            if stripped[i] != stripped[j] and stripped[i] in stripped[j]:
+            if keys[i] != keys[j] and keys[i] in keys[j]:
                 is_fragment[i] = True
                 break
 
@@ -123,10 +138,11 @@ def assemble_notes(blocks: list[dict]) -> list[str]:
     for i in range(n):
         if is_fragment[i]:
             continue
-        s = stripped[i]
-        if s in seen:
+        key = keys[i]
+        if key != "" and key in seen:
             continue
-        seen.add(s)
+        if key != "":
+            seen.add(key)
         kept_indices.append(i)
 
     kept = [items[i] for i in kept_indices]

@@ -19,6 +19,8 @@ from pathlib import Path
 
 import pypdf
 
+import normalize_punct
+
 SCRIPTS_DIR: Path = Path(__file__).resolve().parent
 
 TIF_PATTERNS: tuple[str, ...] = ("page-*_1L.tif", "page-*_2R.tif")
@@ -26,7 +28,6 @@ BLANK_MAX_BYTES: int = 10240
 PDF_SUFFIX: str = "_gray300.pdf"
 MANIFEST_SUFFIX: str = "_gray300.pdf.manifest.json"
 DEFAULT_TIMEOUT_MIN: int = 60
-REPLACEMENTS: dict[str, str] = {"、": "，", "。": "．"}
 
 
 @dataclasses.dataclass
@@ -145,8 +146,12 @@ def check_page_idx(content_list: Path, page_count: int, blanks: set[int]) -> lis
     return errors
 
 
-def check_normalized(src: Path, dst: Path) -> list[str]:
-    """正規化の機械確認（feat-004 criteria §2 と同一規則）。"""
+def check_normalized(
+    src: Path,
+    dst: Path,
+    punct_style: str = normalize_punct.DEFAULT_PUNCT_STYLE,
+) -> list[str]:
+    """正規化の機械確認（feat-004 criteria §2 と同一規則。feat-011 でスタイル対応）。"""
     if not dst.is_file():
         return [f"normalized output missing: {dst}"]
 
@@ -156,16 +161,17 @@ def check_normalized(src: Path, dst: Path) -> list[str]:
     if len(a) != len(b):
         return [f"length mismatch: {src} ({len(a)}) vs {dst} ({len(b)})"]
 
-    allowed = {("、", "，"), ("。", "．")}
+    replacements = normalize_punct.build_replacements(punct_style)
+    allowed = set(replacements.items())
     bad_diff = sum(1 for x, y in zip(a, b) if x != y and (x, y) not in allowed)
 
     errors: list[str] = []
     if bad_diff:
         errors.append(f"disallowed diff: {bad_diff} positions in {dst}")
 
-    residual = b.count("、") + b.count("。")
+    residual = sum(b.count(src_ch) for src_ch in replacements)
     if residual:
-        errors.append(f"residual punctuation: {residual} in {dst}")
+        errors.append(f"residual source chars: {residual} in {dst}")
 
     return errors
 
@@ -475,6 +481,8 @@ def process_dir(d: Path, root: Path, args: argparse.Namespace) -> DirResult:
         str(content_list_path),
         "-o",
         str(normalized_dir),
+        "--punct-style",
+        args.punct_style,
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
@@ -484,6 +492,8 @@ def process_dir(d: Path, root: Path, args: argparse.Namespace) -> DirResult:
             start,
             pages=page_count,
         )
+    if proc.stderr.strip():
+        print(proc.stderr.strip(), file=sys.stderr)
 
     normalized_md = normalized_dir / md_path.name
     normalized_content_list = normalized_dir / content_list_path.name
@@ -503,17 +513,22 @@ def process_dir(d: Path, root: Path, args: argparse.Namespace) -> DirResult:
     else:
         machine_errors.append(f"content list が存在しません: {content_list_path}")
 
-    machine_errors.extend(check_normalized(md_path, normalized_md))
-    machine_errors.extend(check_normalized(content_list_path, normalized_content_list))
+    machine_errors.extend(
+        check_normalized(md_path, normalized_md, args.punct_style)
+    )
+    machine_errors.extend(
+        check_normalized(content_list_path, normalized_content_list, args.punct_style)
+    )
 
+    replacements = normalize_punct.build_replacements(args.punct_style)
     replaced_md = 0
     replaced_json = 0
     if md_path.is_file():
         md_text = md_path.read_text(encoding="utf-8")
-        replaced_md = sum(md_text.count(c) for c in REPLACEMENTS)
+        replaced_md = sum(md_text.count(c) for c in replacements)
     if content_list_path.is_file():
         content_text = content_list_path.read_text(encoding="utf-8")
-        replaced_json = sum(content_text.count(c) for c in REPLACEMENTS)
+        replaced_json = sum(content_text.count(c) for c in replacements)
 
     if machine_errors:
         return _fail(
@@ -640,6 +655,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=Path,
         default=None,
         help="修正定義ファイルのディレクトリ（{name}.json を探す。省略時は修正適用を行わない）",
+    )
+    parser.add_argument(
+        "--punct-style",
+        choices=normalize_punct.PUNCT_STYLES,
+        default=normalize_punct.DEFAULT_PUNCT_STYLE,
+        help="句読点スタイル（comma: 、。→，．に置換 / touten: 句読点を置換しない。既定 comma）",
     )
     return parser.parse_args(argv)
 

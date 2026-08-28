@@ -103,3 +103,154 @@ def test_cli_overwrite_flag(tmp_path: Path) -> None:
     ret = normalize_punct.main([str(src), "-o", str(outdir), "--overwrite"])
     assert ret == 0
     assert output.read_text(encoding="utf-8") == "今日は，晴れ．"
+
+
+# --- feat-011: 句読点スタイル・字形正規化・JIS外漢字警告 ---------------------
+
+
+def test_punct_style_default_is_comma(tmp_path: Path) -> None:
+    src = tmp_path / "src.md"
+    src.write_text("今日は、晴れ。", encoding="utf-8")
+    outdir = tmp_path / "out"
+
+    ret = normalize_punct.main([str(src), "-o", str(outdir)])
+    assert ret == 0
+
+    output = outdir / "src.md"
+    assert output.read_text(encoding="utf-8") == "今日は，晴れ．"
+
+
+def test_punct_style_touten_keeps_punctuation(tmp_path: Path) -> None:
+    src = tmp_path / "src.md"
+    src.write_text("今日は、晴れ。", encoding="utf-8")
+    outdir = tmp_path / "out"
+
+    ret = normalize_punct.main([str(src), "-o", str(outdir), "--punct-style", "touten"])
+    assert ret == 0
+
+    output = outdir / "src.md"
+    assert output.read_text(encoding="utf-8") == "今日は、晴れ。"
+
+
+def test_punct_style_invalid_value(tmp_path: Path) -> None:
+    src = tmp_path / "src.md"
+    src.write_text("今日は、晴れ。", encoding="utf-8")
+    outdir = tmp_path / "out"
+
+    with pytest.raises(SystemExit) as exc_info:
+        normalize_punct.main(
+            [str(src), "-o", str(outdir), "--punct-style", "invalid"]
+        )
+    assert exc_info.value.code == 2
+
+
+def test_cjk_normalized_in_comma_style(tmp_path: Path) -> None:
+    src = tmp_path / "src.md"
+    src.write_text("二值变数・单・对・图・换・徵・樣", encoding="utf-8")
+    outdir = tmp_path / "out"
+
+    ret = normalize_punct.main([str(src), "-o", str(outdir)])
+    assert ret == 0
+
+    output = outdir / "src.md"
+    assert output.read_text(encoding="utf-8") == "二値変数・単・対・図・換・徴・様"
+
+
+def test_cjk_normalized_in_touten_style(tmp_path: Path) -> None:
+    src = tmp_path / "src.md"
+    src.write_text("二值变数・单・对・图・换・徵・樣", encoding="utf-8")
+    outdir = tmp_path / "out"
+
+    ret = normalize_punct.main(
+        [str(src), "-o", str(outdir), "--punct-style", "touten"]
+    )
+    assert ret == 0
+
+    output = outdir / "src.md"
+    assert output.read_text(encoding="utf-8") == "二値変数・単・対・図・換・徴・様"
+
+
+def test_replace_count_includes_cjk(tmp_path: Path, capsys) -> None:
+    src = tmp_path / "src.md"
+    src.write_text("今日は、晴れ。值", encoding="utf-8")
+    outdir = tmp_path / "out"
+
+    ret = normalize_punct.main([str(src), "-o", str(outdir)])
+    assert ret == 0
+
+    captured = capsys.readouterr()
+    assert "src.md: 3 replaced" in captured.out
+
+
+def test_length_preserved(tmp_path: Path) -> None:
+    src = tmp_path / "src.md"
+    content = "今日は、晴れ。值变单对图换徵樣"
+    src.write_text(content, encoding="utf-8")
+    outdir = tmp_path / "out"
+
+    ret = normalize_punct.main([str(src), "-o", str(outdir)])
+    assert ret == 0
+
+    output = outdir / "src.md"
+    assert len(output.read_text(encoding="utf-8")) == len(content)
+
+
+def test_non_jis_warning_emitted(tmp_path: Path, capsys) -> None:
+    src = tmp_path / "src.md"
+    src.write_text("濵習と跺な解", encoding="utf-8")
+    outdir = tmp_path / "out"
+
+    ret = normalize_punct.main([str(src), "-o", str(outdir)])
+    assert ret == 0
+
+    captured = capsys.readouterr()
+    assert "src.md: JIS外漢字 2 種 2 件" in captured.err
+    assert "'跺' x1:" in captured.err
+    assert "'濵' x1:" in captured.err
+
+
+def test_non_jis_warning_exit_code_zero(tmp_path: Path) -> None:
+    src = tmp_path / "src.md"
+    src.write_text("濵習", encoding="utf-8")
+    outdir = tmp_path / "out"
+
+    ret = normalize_punct.main([str(src), "-o", str(outdir)])
+    assert ret == 0
+
+
+def test_non_jis_warning_absent_when_clean(tmp_path: Path, capsys) -> None:
+    src = tmp_path / "src.md"
+    src.write_text("今日は，晴れ．", encoding="utf-8")
+    outdir = tmp_path / "out"
+
+    ret = normalize_punct.main([str(src), "-o", str(outdir)])
+    assert ret == 0
+
+    captured = capsys.readouterr()
+    assert captured.err == ""
+
+
+def test_non_jis_warning_excludes_replaced_chars(tmp_path: Path, capsys) -> None:
+    src = tmp_path / "src.md"
+    src.write_text("变", encoding="utf-8")
+    outdir = tmp_path / "out"
+
+    ret = normalize_punct.main([str(src), "-o", str(outdir)])
+    assert ret == 0
+
+    captured = capsys.readouterr()
+    assert captured.err == ""
+
+
+def test_build_replacements_comma_and_touten() -> None:
+    comma = normalize_punct.build_replacements("comma")
+    touten = normalize_punct.build_replacements("touten")
+
+    assert set(comma.keys()) == {"、", "。"} | set(normalize_punct.CJK_REPLACEMENTS)
+    assert set(touten.keys()) == set(normalize_punct.CJK_REPLACEMENTS)
+
+
+def test_is_jis_x0208() -> None:
+    assert normalize_punct.is_jis_x0208("値") is True
+    assert normalize_punct.is_jis_x0208("值") is False
+    assert normalize_punct.is_jis_x0208("樣") is True

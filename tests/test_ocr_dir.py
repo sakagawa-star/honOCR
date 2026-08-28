@@ -128,6 +128,63 @@ def test_check_normalized_residual(tmp_path: Path) -> None:
     assert errors
 
 
+# --- feat-011: 句読点スタイル連動 -------------------------------------------
+
+
+def test_check_normalized_touten_pass(tmp_path: Path) -> None:
+    src = tmp_path / "src.md"
+    dst_dir = tmp_path / "normalized"
+    dst_dir.mkdir()
+    dst = dst_dir / "src.md"
+
+    src.write_text("今日は、晴れ。", encoding="utf-8")
+    dst.write_text("今日は、晴れ。", encoding="utf-8")
+
+    errors = ocr_dir.check_normalized(src, dst, "touten")
+    assert errors == []
+
+
+def test_check_normalized_touten_rejects_punct_change(tmp_path: Path) -> None:
+    src = tmp_path / "src.md"
+    dst_dir = tmp_path / "normalized"
+    dst_dir.mkdir()
+    dst = dst_dir / "src.md"
+
+    src.write_text("今日は、晴れ。", encoding="utf-8")
+    dst.write_text("今日は，晴れ．", encoding="utf-8")
+
+    errors = ocr_dir.check_normalized(src, dst, "touten")
+    assert errors
+
+
+def test_check_normalized_cjk_allowed(tmp_path: Path) -> None:
+    src = tmp_path / "src.md"
+    dst_dir = tmp_path / "normalized"
+    dst_dir.mkdir()
+    dst = dst_dir / "src.md"
+
+    src.write_text("变换", encoding="utf-8")
+    dst.write_text("変換", encoding="utf-8")
+
+    for style in ("comma", "touten"):
+        errors = ocr_dir.check_normalized(src, dst, style)
+        assert errors == []
+
+
+def test_check_normalized_cjk_residual(tmp_path: Path) -> None:
+    src = tmp_path / "src.md"
+    dst_dir = tmp_path / "normalized"
+    dst_dir.mkdir()
+    dst = dst_dir / "src.md"
+
+    src.write_text("变换", encoding="utf-8")
+    dst.write_text("变换", encoding="utf-8")
+
+    for style in ("comma", "touten"):
+        errors = ocr_dir.check_normalized(src, dst, style)
+        assert errors
+
+
 def test_manifest_roundtrip_match(tmp_path: Path) -> None:
     files = []
     for i in range(2):
@@ -740,6 +797,176 @@ def test_process_dir_fixes_failure_marks_fail(tmp_path: Path, monkeypatch) -> No
 
     assert result.passed is False
     assert any("修正適用失敗" in reason for reason in result.reasons)
+
+
+def test_process_dir_passes_punct_style(tmp_path: Path, monkeypatch) -> None:
+    d = tmp_path / "chap00" / "out"
+    d.mkdir(parents=True)
+    tif = d / "page-01_2R.tif"
+    tif.write_bytes(b"\x00" * 20000)
+
+    root = tmp_path / "root"
+    args = ocr_dir.parse_args(
+        [str(d), "-o", str(root), "--punct-style", "touten"]
+    )
+
+    monkeypatch.setattr(ocr_dir, "list_tifs", lambda d, glob=None: [tif])
+    monkeypatch.setattr(ocr_dir, "blank_positions", lambda files: set())
+    monkeypatch.setattr(ocr_dir, "manifest_matches", lambda manifest_path, files: True)
+    monkeypatch.setattr(ocr_dir, "insert_footnotes", lambda *a, **k: ([], 0, 0))
+
+    class FakePdfReader:
+        def __init__(self, path: str) -> None:
+            self.pages = [None]
+
+    monkeypatch.setattr(ocr_dir.pypdf, "PdfReader", FakePdfReader)
+
+    pdf_dir = root / "pdf"
+    pdf_dir.mkdir(parents=True)
+    (pdf_dir / "chap00_gray300.pdf").write_bytes(b"%PDF-1.4\n")
+    (pdf_dir / "chap00_gray300.pdf.manifest.json").write_text("{}", encoding="utf-8")
+
+    page_text = "本文"
+    page_content_list = json.dumps(
+        [{"page_idx": 0, "type": "text", "text": page_text}]
+    )
+
+    captured_cmd = {}
+
+    def stub_subprocess_run(cmd, capture_output=True, text=True, **kwargs):
+        class Result:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        if cmd and cmd[0] == "mineru":
+            pdf_path = Path(cmd[cmd.index("-p") + 1])
+            out_dir = Path(cmd[cmd.index("-o") + 1])
+            stem = pdf_path.stem
+            hybrid_dir = out_dir / stem / "hybrid_auto"
+            hybrid_dir.mkdir(parents=True, exist_ok=True)
+            (hybrid_dir / f"{stem}.md").write_text(page_text, encoding="utf-8")
+            (hybrid_dir / f"{stem}_content_list.json").write_text(
+                page_content_list, encoding="utf-8"
+            )
+            return Result()
+
+        if len(cmd) > 1 and "normalize_punct.py" in cmd[1]:
+            captured_cmd["cmd"] = cmd
+            md_src = Path(cmd[2])
+            content_list_src = Path(cmd[3])
+            outdir = Path(cmd[cmd.index("-o") + 1])
+            outdir.mkdir(parents=True, exist_ok=True)
+            (outdir / md_src.name).write_text(
+                md_src.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            (outdir / content_list_src.name).write_text(
+                content_list_src.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            return Result()
+
+        if len(cmd) > 1 and "html_table_to_md.py" in cmd[1]:
+            result = Result()
+            result.stdout = (
+                "chap00_gray300.md: 0 converted, 0 skipped\n"
+                "total: 0 converted, 0 skipped in 1 files\n"
+            )
+            return result
+
+        return Result()
+
+    monkeypatch.setattr(ocr_dir.subprocess, "run", stub_subprocess_run)
+
+    result = ocr_dir.process_dir(d, root, args)
+
+    assert result.passed is True
+    cmd = captured_cmd["cmd"]
+    assert "--punct-style" in cmd
+    assert cmd[cmd.index("--punct-style") + 1] == "touten"
+
+
+def test_process_dir_forwards_normalize_stderr(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    d = tmp_path / "chap00" / "out"
+    d.mkdir(parents=True)
+    tif = d / "page-01_2R.tif"
+    tif.write_bytes(b"\x00" * 20000)
+
+    root = tmp_path / "root"
+    args = ocr_dir.parse_args([str(d), "-o", str(root)])
+
+    monkeypatch.setattr(ocr_dir, "list_tifs", lambda d, glob=None: [tif])
+    monkeypatch.setattr(ocr_dir, "blank_positions", lambda files: set())
+    monkeypatch.setattr(ocr_dir, "manifest_matches", lambda manifest_path, files: True)
+    monkeypatch.setattr(ocr_dir, "insert_footnotes", lambda *a, **k: ([], 0, 0))
+
+    class FakePdfReader:
+        def __init__(self, path: str) -> None:
+            self.pages = [None]
+
+    monkeypatch.setattr(ocr_dir.pypdf, "PdfReader", FakePdfReader)
+
+    pdf_dir = root / "pdf"
+    pdf_dir.mkdir(parents=True)
+    (pdf_dir / "chap00_gray300.pdf").write_bytes(b"%PDF-1.4\n")
+    (pdf_dir / "chap00_gray300.pdf.manifest.json").write_text("{}", encoding="utf-8")
+
+    page_text = "本文"
+    page_content_list = json.dumps(
+        [{"page_idx": 0, "type": "text", "text": page_text}]
+    )
+
+    def stub_subprocess_run(cmd, capture_output=True, text=True, **kwargs):
+        class Result:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        if cmd and cmd[0] == "mineru":
+            pdf_path = Path(cmd[cmd.index("-p") + 1])
+            out_dir = Path(cmd[cmd.index("-o") + 1])
+            stem = pdf_path.stem
+            hybrid_dir = out_dir / stem / "hybrid_auto"
+            hybrid_dir.mkdir(parents=True, exist_ok=True)
+            (hybrid_dir / f"{stem}.md").write_text(page_text, encoding="utf-8")
+            (hybrid_dir / f"{stem}_content_list.json").write_text(
+                page_content_list, encoding="utf-8"
+            )
+            return Result()
+
+        if len(cmd) > 1 and "normalize_punct.py" in cmd[1]:
+            md_src = Path(cmd[2])
+            content_list_src = Path(cmd[3])
+            outdir = Path(cmd[cmd.index("-o") + 1])
+            outdir.mkdir(parents=True, exist_ok=True)
+            (outdir / md_src.name).write_text(
+                md_src.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            (outdir / content_list_src.name).write_text(
+                content_list_src.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            result = Result()
+            result.stderr = "chap00_gray300.md: JIS外漢字 1 種 1 件\n  '跺' x1: ...文脈..."
+            return result
+
+        if len(cmd) > 1 and "html_table_to_md.py" in cmd[1]:
+            result = Result()
+            result.stdout = (
+                "chap00_gray300.md: 0 converted, 0 skipped\n"
+                "total: 0 converted, 0 skipped in 1 files\n"
+            )
+            return result
+
+        return Result()
+
+    monkeypatch.setattr(ocr_dir.subprocess, "run", stub_subprocess_run)
+
+    result = ocr_dir.process_dir(d, root, args)
+
+    assert result.passed is True
+    captured = capsys.readouterr()
+    assert "JIS外漢字" in captured.err
 
 
 def test_main_pass_line_includes_fixes(monkeypatch, capsys, tmp_path: Path) -> None:
