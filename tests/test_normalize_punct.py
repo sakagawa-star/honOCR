@@ -254,3 +254,119 @@ def test_is_jis_x0208() -> None:
     assert normalize_punct.is_jis_x0208("値") is True
     assert normalize_punct.is_jis_x0208("值") is False
     assert normalize_punct.is_jis_x0208("樣") is True
+
+
+# --- feat-013: 置換表の拡充・旧字体警告 -------------------------------------
+
+
+def test_cjk_feat013_simplified_and_traditional(tmp_path: Path) -> None:
+    src = tmp_path / "src.md"
+    src.write_text("黑說题戾边橫虛錄", encoding="utf-8")
+    outdir = tmp_path / "out"
+
+    ret = normalize_punct.main([str(src), "-o", str(outdir)])
+    assert ret == 0
+
+    output = outdir / "src.md"
+    assert output.read_text(encoding="utf-8") == "黒説題戻辺横虚録"
+
+
+def test_cjk_feat013_old_forms(tmp_path: Path) -> None:
+    src = tmp_path / "src.md"
+    src.write_text("權收檢縱廣", encoding="utf-8")
+    outdir = tmp_path / "out"
+
+    ret = normalize_punct.main([str(src), "-o", str(outdir)])
+    assert ret == 0
+
+    output = outdir / "src.md"
+    assert output.read_text(encoding="utf-8") == "権収検縦広"
+
+
+def test_cjk_table_has_21_entries() -> None:
+    keys = list(normalize_punct.CJK_REPLACEMENTS.keys())
+    assert len(keys) == 21
+    assert len(set(keys)) == 21
+
+
+def test_cjk_feat013_applies_in_touten_style(tmp_path: Path) -> None:
+    src = tmp_path / "src.md"
+    src.write_text("黑說题戾边橫虛錄權收檢縱廣", encoding="utf-8")
+    outdir = tmp_path / "out"
+
+    ret = normalize_punct.main(
+        [str(src), "-o", str(outdir), "--punct-style", "touten"]
+    )
+    assert ret == 0
+
+    output = outdir / "src.md"
+    assert output.read_text(encoding="utf-8") == "黒説題戻辺横虚録権収検縦広"
+
+
+def test_cjk_feat013_length_preserved(tmp_path: Path) -> None:
+    src = tmp_path / "src.md"
+    content = "黑說题戾边橫虛錄權收檢縱廣"
+    src.write_text(content, encoding="utf-8")
+    outdir = tmp_path / "out"
+
+    ret = normalize_punct.main([str(src), "-o", str(outdir)])
+    assert ret == 0
+
+    output = outdir / "src.md"
+    assert len(output.read_text(encoding="utf-8")) == len(content)
+
+
+def test_old_form_warning_emitted(tmp_path: Path, capsys) -> None:
+    src = tmp_path / "src.md"
+    src.write_text("印刷·製本 廣済堂", encoding="utf-8")
+    outdir = tmp_path / "out"
+
+    ret = normalize_punct.main([str(src), "-o", str(outdir)])
+    assert ret == 0
+
+    captured = capsys.readouterr()
+    assert "src.md: 旧字体 1 種 1 件（固有名詞の可能性。必要なら fixes で復元すること）" in captured.err
+    assert "'廣'→'広' x1: ...印刷·製本 廣済堂..." in captured.err
+
+
+def test_old_form_warning_context_is_pre_normalization(tmp_path: Path, capsys) -> None:
+    src = tmp_path / "src.md"
+    src.write_text("印刷·製本 廣済堂", encoding="utf-8")
+    outdir = tmp_path / "out"
+
+    ret = normalize_punct.main([str(src), "-o", str(outdir)])
+    assert ret == 0
+
+    captured = capsys.readouterr()
+    assert "廣" in captured.err
+    assert "'廣'→'広'" in captured.err
+
+
+def test_old_form_warning_absent_for_cn_chars(tmp_path: Path, capsys) -> None:
+    src = tmp_path / "src.md"
+    src.write_text("变", encoding="utf-8")
+    outdir = tmp_path / "out"
+
+    ret = normalize_punct.main([str(src), "-o", str(outdir)])
+    assert ret == 0
+
+    captured = capsys.readouterr()
+    assert "旧字体" not in captured.err
+
+
+def test_old_form_warning_exit_code_zero(tmp_path: Path) -> None:
+    src = tmp_path / "src.md"
+    src.write_text("印刷·製本 廣済堂", encoding="utf-8")
+    outdir = tmp_path / "out"
+
+    ret = normalize_punct.main([str(src), "-o", str(outdir)])
+    assert ret == 0
+
+
+def test_old_form_table_is_subset_of_cjk() -> None:
+    old_form_keys = set(normalize_punct.OLD_FORM_REPLACEMENTS.keys())
+    cjk_keys = set(normalize_punct.CJK_REPLACEMENTS.keys())
+    cn_keys = set(normalize_punct.CJK_REPLACEMENTS_CN.keys())
+
+    assert old_form_keys <= cjk_keys
+    assert old_form_keys.isdisjoint(cn_keys)

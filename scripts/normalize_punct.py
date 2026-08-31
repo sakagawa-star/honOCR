@@ -25,7 +25,9 @@ PUNCT_REPLACEMENTS: dict[str, dict[str, str]] = {
     "touten": {},
 }
 
-CJK_REPLACEMENTS: dict[str, str] = {
+# 簡体字・繁体字（日本語で正当に使われることはない）
+CJK_REPLACEMENTS_CN: dict[str, str] = {
+    # feat-011: PRML・確率統計 chap07 で実測
     "值": "値",
     "变": "変",
     "单": "単",
@@ -34,7 +36,28 @@ CJK_REPLACEMENTS: dict[str, str] = {
     "换": "換",
     "徵": "徴",
     "樣": "様",
+    # feat-013: 確率統計 chap00〜09 で実測
+    "黑": "黒",
+    "說": "説",
+    "题": "題",
+    "戾": "戻",
+    "边": "辺",
+    "橫": "横",
+    "虛": "虚",
+    "錄": "録",
 }
+
+# 旧字体（固有名詞では正当な表記になりうる。FR-006 で置換箇所を警告する）
+OLD_FORM_REPLACEMENTS: dict[str, str] = {
+    # feat-013: 確率統計 chap00〜09 で実測
+    "權": "権",
+    "收": "収",
+    "檢": "検",
+    "縱": "縦",
+    "廣": "広",
+}
+
+CJK_REPLACEMENTS: dict[str, str] = CJK_REPLACEMENTS_CN | OLD_FORM_REPLACEMENTS
 
 CJK_RE: re.Pattern[str] = re.compile(r"[一-鿿]")
 CONTEXT_CHARS: int = 25
@@ -89,6 +112,41 @@ def format_non_jis_warning(name: str, found: dict[str, tuple[int, str]]) -> list
     for ch in sorted(found):
         count, context = found[ch]
         lines.append(f"  '{ch}' x{count}: ...{context}...")
+    return lines
+
+
+def find_old_forms(text: str) -> dict[str, tuple[int, str]]:
+    """置換【前】のテキストから旧字体の出現を検出する。
+
+    戻り値: 旧字体 -> (出現件数, 最初の出現箇所の文脈)。
+    """
+    found: dict[str, tuple[int, str]] = {}
+    for ch in OLD_FORM_REPLACEMENTS:
+        count = text.count(ch)
+        if count < 1:
+            continue
+        pos = text.find(ch)
+        context = text[max(0, pos - CONTEXT_CHARS):pos + CONTEXT_CHARS + 1]
+        context = context.replace("\n", " ").replace("\r", " ")
+        found[ch] = (count, context)
+    return found
+
+
+def format_old_form_warning(name: str, found: dict[str, tuple[int, str]]) -> list[str]:
+    """警告行のリストを返す（found が空なら空リスト）。"""
+    if not found:
+        return []
+
+    total = sum(count for count, _ in found.values())
+    lines = [
+        f"{name}: 旧字体 {len(found)} 種 {total} 件"
+        "（固有名詞の可能性。必要なら fixes で復元すること）"
+    ]
+    for ch in sorted(found):
+        count, context = found[ch]
+        lines.append(
+            f"  '{ch}'→'{OLD_FORM_REPLACEMENTS[ch]}' x{count}: ...{context}..."
+        )
     return lines
 
 
@@ -201,6 +259,7 @@ def main(argv: list[str] | None = None) -> int:
     total = 0
     for file_path in files:
         text = file_path.read_text(encoding="utf-8")
+        old_forms = find_old_forms(text)
         normalized, count = normalize_text(text, args.punct_style)
         output_path = outdir / file_path.name
 
@@ -210,6 +269,8 @@ def main(argv: list[str] | None = None) -> int:
             print(str(exc), file=sys.stderr)
             return 1
 
+        for warning_line in format_old_form_warning(file_path.name, old_forms):
+            print(warning_line, file=sys.stderr)
         for warning_line in format_non_jis_warning(file_path.name, find_non_jis_kanji(normalized)):
             print(warning_line, file=sys.stderr)
 
