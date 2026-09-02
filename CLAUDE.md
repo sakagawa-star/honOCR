@@ -25,96 +25,17 @@
 
 ## 技術スタック
 
-- **言語**: Python 3.12.3
-- **パッケージ管理**: uv
-- **主要フレームワーク/ライブラリ**: MinerU 3.4.4（OCR本体）、img2pdf / pillow（前処理・OCR用PDF生成）
-- **詳細**: `docs/TECH_STACK.md` を参照
-- **注意**: GPU は RTX 5060 Ti 16GB（Blackwell, sm_120）。CUDA 12.8 以降のビルドが必須で、古い CUDA 前提のツールは動かない
+言語・パッケージ管理・ライブラリ一覧（バージョン・選定理由）・実行環境（GPU/CUDA の制約を含む）は `docs/TECH_STACK.md` を参照する。
 
-## データ
+## プロジェクト知識（データ・ディレクトリ構成・ドメイン知識）
 
-`{BASE}` = `/home/sakagawa/work/Pattern_Recognition_and_Machine_Learning`（git 管理外・リポジトリ外）
+データの所在と仕様、ディレクトリ構成、ドメイン知識（MinerU の挙動・OCR 誤りの類型と対処・各スクリプトの使い方等）は **`docs/PROJECT_KNOWLEDGE.md`** に集約している。
 
-- **スキャン原本**: `{BASE}/chapNN/out/`（NN = 00〜07）の `page-NN_{1L,2R}.tif` 計396枚（chap00: 20 / chap01: 84 / chap02: 70 / chap03: 44 / chap04: 48 / chap05: 70 / chap06: 36 / chap07: 24。2026-08-18 実測）。補正済み、600dpi、RGB、LZW可逆（章によりピクセル寸法は微差）。**OCR入力はこちらを使う**。白紙ページのみ 1-bit G4（約1KB）
-- 各 `out/` の `chapNN_300dpi.pdf` は LLM閲覧用の非可逆圧縮PDF（テキスト層なし）。**OCR入力には使わない**（JPEGノイズが数式の添字認識に不利）
-- **OCR 成果物**: `{BASE}/ocr/` 配下 — `pdf/`（入力PDF＋manifest）、`mineru-full/chapNN/run-NN{,-normalized}/`（実行別出力）、**`final/chapNN/`（最終成果物: Markdown＋content_list.json＋カラー images/。feat-005 で全8章構築済み）**、`fixes/chapNN.json`（手動修正の定義ファイル。書籍本文の文字列を含むため**リポジトリに置かない・コミットしない**。feat-010）
-
-### 第2の書籍（『プログラミングのための確率統計』）
-
-`{BASE2}` = `/home/sakagawa/work/確率統計`（git 管理外・リポジトリ外）
-
-- **スキャン原本**: `{BASE2}/dewarping/chapNN/out/`（NN = 00〜09）の `page-NN_{1L,2R}.tif` 計383枚（chap00 は前付け、chap09 は付録ABC・参考文献・目次・索引）。仕様は PRML と同条件（600dpi・LZW 可逆・白紙のみ 1-bit G4）だが**大半がグレースケール**（`L`）。`out/cache/` は glob 対象外
-- **句読点スタイルは「、。」**のため、OCR 時は必ず `--punct-style touten` を指定する（feat-011）
-- 2026-08-28 に**全10章（383ページ）の本処理が完了**（`ocr_dir.py --punct-style touten --final` で約35分、全章 PASS）。`{BASE2}/ocr/final/chap00〜09/` に最終成果物（Markdown 計約932KB＋画像421枚）がある。feat-013 の字形正規化・修正定義（`{BASE2}/ocr/fixes/` の5ファイル）も適用済み
-
-## ディレクトリ構成（主要部分）
-
-```
-honOCR/
-├── CLAUDE.md               # 本ファイル
-├── AGENTS.md               # Codex が起動時に読む指示ファイル（レビュー定型指示）
-├── README.md               # プロジェクト概要と使い方（コマンド・CLIオプション・環境）
-├── pyproject.toml          # uv プロジェクト定義（依存・[tool.uv] 設定・cu130 インデックス）
-├── .python-version         # Python 3.12 固定
-├── uv.lock                 # ロックファイル（自動生成）
-├── fixes/                  # 修正定義ファイルの書式テンプレートと仕様（feat-010。実体は {BASE}/ocr/fixes/ でリポジトリ外）
-│   ├── template.json
-│   └── README.md
-├── docs/                   # ドキュメント（開発プロセス基準）
-│   ├── BACKLOG.md
-│   ├── CHANGELOG.md
-│   ├── BUGFIX_STANDARD.md
-│   ├── DESIGN_STANDARD.md
-│   ├── REQUIREMENTS_STANDARD.md
-│   ├── REVIEW_CRITERIA.md
-│   ├── TECH_STACK.md
-│   ├── HERDR_SETUP.md
-│   ├── codex-exec-ubuntu24-bwrap-fix.md
-│   └── issues/             # 案件ディレクトリ
-├── scripts/
-│   ├── make_ocr_pdf.py     # TIF → OCR用可逆PDF生成 CLI（feat-002）
-│   ├── normalize_punct.py  # MinerU 出力の句読点正規化 CLI（feat-004）
-│   ├── html_table_to_md.py # HTML 表 → GFM パイプテーブル変換 CLI（feat-008）
-│   ├── insert_footnotes.py # content_list の脚注（page_footnote）を md に挿入する CLI（feat-009）
-│   ├── apply_fixes.py      # 修正定義ファイル（old→new）を md に機械適用する CLI（feat-010）
-│   ├── ocr_dir.py          # OCR 一括実行 CLI: PDF生成→MinerU→正規化→機械確認→HTML表変換→脚注挿入→修正適用（feat-006, 008, 009, 010）
-│   ├── colorize_images.py  # 図画像のカラー再切出 CLI（feat-007）
-│   └── build_final.py      # final ディレクトリ構築 CLI: 集約＋3種類の機械検証（feat-012）
-└── tests/
-    ├── test_env.py         # 環境スモークテスト（feat-001）
-    ├── test_make_ocr_pdf.py  # 変換スクリプトのテスト（feat-002）
-    ├── test_normalize_punct.py  # 正規化スクリプトのテスト（feat-004）
-    ├── test_html_table_to_md.py  # HTML表変換スクリプトのテスト（feat-008）
-    ├── test_insert_footnotes.py  # 脚注挿入スクリプトのテスト（feat-009）
-    ├── test_apply_fixes.py # 修正適用スクリプトのテスト（feat-010）
-    ├── test_ocr_dir.py     # 一括実行スクリプトのテスト（feat-006）
-    ├── test_colorize_images.py  # カラー再切出スクリプトのテスト（feat-007）
-    ├── test_build_final.py  # final 構築スクリプトのテスト（feat-012）
-    └── results/            # テスト結果の保存先
-```
-
-## ドメイン知識
-
-- MinerU の対応入力: pdf / png / jpeg / jp2 / webp / gif / bmp / jpg / tiff（**拡張子 `.tif` は非対応**、`.tiff` のみ）
-- MinerU の内部処理は **200dpi** レンダリング（`DEFAULT_PDF_IMAGE_DPI = 200`）。画像入力も内部で JPEG(q=95) の PDF に変換される → 高解像度を渡しても 200dpi 相当で頭打ち。**重要なのは可逆（非JPEG）ソースを渡すこと**
-- MinerU 3.4.4 のデフォルトバックエンドは `hybrid-engine`。事前検証で MinerU 3.4.4 + PyTorch 2.13 (cu130) が本環境の GPU を認識することを確認済み（2026-08-05。検証環境は削除済み）
-- OCR入力用PDFは TIF から作り直す（300dpi グレースケール・Flate 可逆、章単位1ファイル）
-- テキスト層埋め込み時の座標変換: TIF ピクセル → PDF ポイントは `pt = px × 72/600`（600dpi 原稿の場合）。閲覧用PDFのページサイズは 441.96 × 696.72 pt
-- 書籍は日本語＋数式＋英語混在。NDL OCR 系は日本語専用で数式非対応
-- 章とファイルの対応（確定）: chap-00 = `page-01_2R`〜`page-09_2R` の17ファイル、chap-01 = `page-10_2R`〜`page-42_1L` の64ファイル。除外3件（章頭白紙 `page-01_1L`・`page-10_1L`、第2章が写った `page-42_2R`）。詳細は feat-003 案件 README
-- 本環境はプロキシ必須（大学ネットワーク）。MinerU 実行時は `no_proxy`/`NO_PROXY` に `localhost,127.0.0.1` を追加しないとローカルAPIヘルスチェックが 502 で失敗する
-- MinerU の出力は句読点スタイルが揺れる（原本「，．」の約15%が「、。」に置換される。feat-003 で実測）。`scripts/normalize_punct.py` による「、→，」「。→．」の全文置換後処理で解消する（feat-004。MinerU 変換後は必ず適用する）。**この置換は書籍の句読点スタイルに依存する**ため `--punct-style {comma,touten}` で選ぶ（feat-011。既定 `comma` = 置換する。PRML 用。「、。」を用いる書籍（例: 『プログラミングのための確率統計』）には `touten` を指定し、置換しない）
-- MinerU は日本語字のかわりに中国語字（簡体字・繁体字・旧字体）を出すことがある。`normalize_punct.py` は句読点スタイルによらず**21種**を常時置換する（feat-011 で8種、feat-013 で13種追加）。内訳は `CJK_REPLACEMENTS_CN`（簡体字・繁体字16種: 值→値・变→変・单→単・对→対・图→図・换→換・徵→徴・樣→様・黑→黒・說→説・题→題・戾→戻・边→辺・橫→横・虛→虚・錄→録）と `OLD_FORM_REPLACEMENTS`（旧字体5種: 權→権・收→収・檢→検・縱→縦・廣→広）
-- **旧字体5種は固有名詞では正当な表記になりうる**（実例: 確率統計 chap09 奥付の「印刷·製本 廣済堂」は旧字を正式名称に用いる実在の社名）。そのため `normalize_punct.py` は**旧字体を置換した箇所を、置換【前】の文脈つきで標準エラーへ警告する**（feat-013。置換後は元の字が失われ、後から grep しても壊れた箇所を見つけられないため）。新しい書籍を処理したら**この警告を必ず確認し、固有名詞であれば `apply_fixes.py` の修正定義ファイルで元に戻す**
-- 字形対応が成立しない誤認識（例: 「濵習」→演習、「跺な解」→疎な解、「揾」→掟）は置換せず、**正規化後に残る JIS X 0208 外の漢字を標準エラーへ警告**するので、`apply_fixes.py` の修正定義ファイルで対処する。ただしこの警告は**正規化の時点**で出力されるため、脚注挿入（feat-009）で content_list から md へ持ち込まれる文字は md 側の警告に現れない（**json 側の警告を正とみなす**。content_list は全ブロックを持つため検出漏れは生じない）
-- **語彙単位の誤り**（実例: 確率統計 chap07 の「[0,1)上的一様分布」→「上の」。feat-016）は、字形の 1 対 1 対応では表現できず（「的」は「比較的」等で正当に使われる）、構成する字がすべて JIS X 0208 内にあるため**上記の警告にも現れない**。機械的な検出手段がないため手動テストで見つけるほかなく、発見したら `apply_fixes.py` の修正定義ファイルで対処する（置換表には入れない）
-- **MinerU は1つの見出しを2ブロックに分断することがある**（実例: 確率統計 chap02 の Q&A コラム見出し `? 2.2`。原本では1つの質問文が2行に組まれているだけだが、layout 解析が2行目を別ブロックとして切り出し、md 上で「見出し行＋空行＋本文段落」になる。feat-015）。文字の認識誤りではなく**ブロック分割の問題**のため、正規化の各種警告にも `build_final.py` の3種類の機械検証にも現れず、手動テストで見つけるほかない。発見したら `apply_fixes.py` の修正定義ファイルで対処する。**`apply_fixes.py` は md 全文を1つの文字列として `str.count()` / `str.replace()` するため、`old` / `new` に改行を含む複数行の文字列を指定でき**（JSON では `\n` でエスケープする）、分断の結合はこれで表現する。なお `content_list.json` は `apply_fixes.py` の対象外のため分断したままになる（md と json の非対称性。既存ポリシー）
-- OCR の一括実行（feat-006）: `uv run python scripts/ocr_dir.py <TIFディレクトリ> -o <出力ルート> [--punct-style {comma,touten}]` で PDF 生成 → MinerU → 正規化 → 機械確認 → HTML表変換 → 脚注挿入 → 修正適用（`--fixes-dir` 指定時）まで1コマンド（ユーザーが Claude Code なしで実行できる）。入力PDF には manifest（TIF のパス・サイズ・mtime）が付き、一致時のみ再利用される。`--punct-style` は正規化と機械確認の両方に効く（feat-011。指定を誤ると機械確認が FAIL するため取り違えは検出される）。`--final` を付けると、修正適用の直後に「カラー再切出 → `final/{name}/` 構築」まで実行する（feat-012。既定は行わない。**章単位**で構築するため、後続の章が FAIL しても完成済みの final は残る）
-- MinerU は表を Markdown 中に **1行の HTML `<table>`** として出力する。CommonMark では HTML ブロック内の `$…$` が数式描画されないため（VS Code プレビューで表内数式が LaTeX ソースのまま表示される）、`uv run python scripts/html_table_to_md.py <md> -o <出力先> [--overwrite]` で GFM パイプテーブルに変換する（feat-008。`ocr_dir.py` に組み込み済みのため通常は個別実行不要。`colspan` 等の複雑な表は壊さずスキップして警告。content_list の `table_body` は MinerU スキーマ維持のため無改変）
-- MinerU は脚注（訳注）を content_list の `page_footnote` 型ブロックにのみ出力し、**Markdown には含めない**。`uv run python scripts/insert_footnotes.py <md> <content_list> -o <出力先> [--overwrite]` で md の該当ページ本文末尾の直後に blockquote（`> 4 訳注：…`）として挿入する（feat-009。`ocr_dir.py` に組み込み済みのため通常は個別実行不要。冪等・content_list 無改変。脚注ブロックは断片化・読み順乱れがあるため「断片除去 → bbox 読み順ソート → 番号プレフィックス結合」で組み立てる）。番号プレフィックスは数字・上付き数字に加え `*N` / `\*N` / `$^{N}$` / `$^{*N}$` を認識し、断片判定の比較キーは空白・`$`・`\` を除去して行う（feat-011）
-- MinerU content_list の `bbox` は 0–1000 正規化座標（ページ左上原点）。図ブロック（img_path を持つ image/chart/table）は `uv run python scripts/colorize_images.py <content_list> <TIFディレクトリ> -o <images出力先>` で原本 TIF からカラー再切出できる（feat-007。既定 1/3 縮小 = 旧画像と同等の表示サイズ。MinerU の生成画像はグレースケール PDF 由来のため必ず適用する。`ocr_dir.py --final` に組み込み済みのため通常は個別実行不要）
-- 最終成果物 `final/{name}/`（md＋content_list.json＋images/）は `uv run python scripts/build_final.py <run-NN-normalized> -o <final/chapNN> [--overwrite]` で構築する（feat-012。`ocr_dir.py --final` に組み込み済みのため通常は個別実行不要）。コピー後に3種類の機械検証（バイト同一・md の画像参照が images/ に存在・content_list の `img_path` 集合と images/ の**完全一致**）を行い、1つでも不合格なら終了コード 1。再構築時は `images/` の孤児ファイルを削除する。**出力先がコピー元と同一・入れ子、または出力先やその images/ がシンボリックリンクの場合は書き込み前に拒否する**（コピー元の成果物を壊さないため）
-- OCR の個別誤り（例: 式番号と式の誤結合。MinerU の layout 解析起因で再OCRでも再発する）は final を直接編集せず、`{BASE}/ocr/fixes/{name}.json` に old→new の修正として登録し `uv run python scripts/apply_fixes.py <md> <fixes.json> -o <出力先> --overwrite` で適用する（feat-010。書式は `fixes/template.json`・`fixes/README.md` 参照。old 不在・複数一致は全件エラーで出力なし＝再OCRで文面が変わると検出できる。冪等。**定義ファイルの実体は書籍本文を含むためコミット禁止**）。**修正を定義するときは `old` の一意性だけでなく、適用後に `new` がちょうど1件になることも必ず事前に数える**（`new` が他所に正当に存在すると最終不変条件違反でエラー停止する。feat-013 で実際に発生。一意にならない場合は `old`/`new` の両方に前後の文脈を含める）
+- **必読**: OCR 作業・案件の調査に入る前に `docs/PROJECT_KNOWLEDGE.md` を全文読む（本ファイルには要約を置かない。知識は同ファイルのみで管理する）
+- **更新の役割分担（非対称ルール）**:
+  - `docs/PROJECT_KNOWLEDGE.md` の**内容**は、各案件の完了処理で更新する（feat/bug: 案件で得た知見・データの状態・ファイルの追加削除の反映。update: ファイルの追加削除の反映）。追記には出所の案件 ID を付す
+  - `docs/PROJECT_KNOWLEDGE.md` の**構成**（分割・セクション再編）の変更は update 案件で扱う
+  - **`CLAUDE.md`（本ファイル）の変更は update 案件でのみ行う。** feat/bug 案件の完了処理で本ファイルを更新することはない
 
 ## 開発方針
 
@@ -131,12 +52,12 @@ honOCR/
 3. **ドキュメント保存** → 要求仕様書を `docs/issues/{案件フォルダ}/requirements.md`、機能設計書を `docs/issues/{案件フォルダ}/design.md` にファイル保存する。**保存が完了するまで実装に進んではならない**
 4. **レビュー（Codex → 人）** → 保存されたドキュメントを **Codex** でレビューする。実行方法は後述の「Codexによるレビューの実行方法」を参照。**まず Codex の再帰レビュー（修正→再レビュー）を重要度「高・中」がゼロに収束するまで回し、その後に人（ユーザー）がレビューする**（収束前に人レビューはしない）。レビュー実行時は `docs/REVIEW_CRITERIA.md` の基準に従うこと
 5. **修正（必要な場合）** → レビューで問題があれば、再調査してドキュメントを更新する。**ステップ2〜4を問題がなくなるまで繰り返す**
-6. **実装** → ドキュメント（要求仕様書・機能設計書・CLAUDE.md）を読んで実装する。実装は後述の「実装の実行方法（Sonnetサブエージェント）」に従い、Sonnet サブエージェントに委任する。実装完了後、「テスト」のルールに従ってテストを実行する
+6. **実装** → ドキュメント（要求仕様書・機能設計書・CLAUDE.md・`docs/PROJECT_KNOWLEDGE.md`）を読んで実装する。実装は後述の「実装の実行方法（Sonnetサブエージェント）」に従い、Sonnet サブエージェントに委任する。実装完了後、「テスト」のルールに従ってテストを実行する
 7. **手動テスト** → ユーザーがテストする。以下の問題があれば `docs/BUGFIX_STANDARD.md` に従って修正計画を `docs/issues/{案件フォルダ}/investigation.md` に追記する（上書きしない。イテレーション番号を付けて履歴を残す）。**ユーザーの承認を得た上で、ステップ2〜7を繰り返す**（コード修正はステップ6で行う。ステップ7で直接コードを編集してはならない）
    - 不具合の発見
    - 要求通りに実装されていない
    - 要求仕様作成時のヒアリング漏れ
-8. **完了** → `docs/BACKLOG.md` のステータスを Closed に更新する。`docs/CHANGELOG.md` に完了内容を記録する。ファイルの追加・削除があった場合は `CLAUDE.md` のディレクトリ構成を最新に更新する。`README.md` に記載済みの内容（コマンド、CLIオプション、入力/出力形式、既定値、実行環境・依存条件）に変更があった場合は `README.md` を最新に更新する。**`README.md` にはローカルの実パスを書かない**（公開リポジトリのため。`/home/...` 等の実パスは `{BASE}` などの抽象表現に置き換える）
+8. **完了** → `docs/BACKLOG.md` のステータスを Closed に更新する。`docs/CHANGELOG.md` に完了内容を記録する。`docs/PROJECT_KNOWLEDGE.md` を更新する（ファイルの追加・削除があった場合はディレクトリ構成を最新にし、案件で得た知見・データの状態の変化を該当セクションに追記する。追記には案件 ID を付す）。`CLAUDE.md` は更新しない（update 案件でのみ変更する）。`README.md` に記載済みの内容（コマンド、CLIオプション、入力/出力形式、既定値、実行環境・依存条件）に変更があった場合は `README.md` を最新に更新する。**`README.md` にはローカルの実パスを書かない**（公開リポジトリのため。`/home/...` 等の実パスは `{BASE}` などの抽象表現に置き換える）
 
 ### 不具合修正フロー（bug-XXX 案件）
 
@@ -149,11 +70,11 @@ honOCR/
 5. **修正（必要な場合）** → レビューで問題があれば、再調査してドキュメントを更新する。**ステップ2〜4を問題がなくなるまで繰り返す**
 6. **実装** → 承認された修正計画に沿ってコードを修正する。実装は後述の「実装の実行方法（Sonnetサブエージェント）」に従い、Sonnet サブエージェントに委任する。計画にない変更が必要になった場合は中断して報告する
 7. **手動テスト** → ユーザーがテストする。問題があれば `docs/BUGFIX_STANDARD.md` に従って investigation.md にイテレーション番号を付けて追記し、**ユーザーの承認を得た上で、ステップ2〜7を繰り返す**（コード修正はステップ6で行う。ステップ7で直接コードを編集してはならない）
-8. **完了** → `docs/BACKLOG.md` のステータスを Closed に更新する。`docs/CHANGELOG.md` に完了内容を記録する。ファイルの追加・削除があった場合は `CLAUDE.md` のディレクトリ構成を最新に更新する。`README.md` に記載済みの内容（コマンド、CLIオプション、入力/出力形式、既定値、実行環境・依存条件）に変更があった場合は `README.md` を最新に更新する。**`README.md` にはローカルの実パスを書かない**（公開リポジトリのため。`/home/...` 等の実パスは `{BASE}` などの抽象表現に置き換える）
+8. **完了** → `docs/BACKLOG.md` のステータスを Closed に更新する。`docs/CHANGELOG.md` に完了内容を記録する。`docs/PROJECT_KNOWLEDGE.md` を更新する（ファイルの追加・削除があった場合はディレクトリ構成を最新にし、案件で得た知見・データの状態の変化を該当セクションに追記する。追記には案件 ID を付す）。`CLAUDE.md` は更新しない（update 案件でのみ変更する）。`README.md` に記載済みの内容（コマンド、CLIオプション、入力/出力形式、既定値、実行環境・依存条件）に変更があった場合は `README.md` を最新に更新する。**`README.md` にはローカルの実パスを書かない**（公開リポジトリのため。`/home/...` 等の実パスは `{BASE}` などの抽象表現に置き換える）
 
 ### ドキュメント更新フロー（update-XXX 案件）
 
-開発プロセスを定める運用ドキュメント（`CLAUDE.md`、`docs/` 直下の基準書・BACKLOG・CHANGELOG、`.gitignore` 等）の改訂は **update-XXX 案件**として扱い、以下のフローを**厳守**する。典型例:
+開発プロセスを定める運用ドキュメント（`CLAUDE.md`、`docs/` 直下の基準書・BACKLOG・CHANGELOG、`.gitignore` 等）の改訂は **update-XXX 案件**として扱い、以下のフローを**厳守**する。**`docs/PROJECT_KNOWLEDGE.md` は運用ドキュメントではなく、内容の更新は各案件の完了処理で行う（update 案件の対象外）。ただし同ファイルの構成変更（分割・セクション再編）は update 案件とする。** 典型例:
 
 - 本プロジェクトのコピー元テンプレートリポジトリ（開発ドキュメントテンプレート）の改訂の取り込み
 - ドキュメント間の二重管理・不整合の解消、運用ルールの新設・変更
@@ -170,7 +91,7 @@ honOCR/
    2. 情報の喪失（削除・置換対象に、他所に存在しない情報が含まれていないか）
    3. 変更後のドキュメント間整合性（参照切れ、矛盾、案件の漏れ・重複）
 5. **反映** → design.md に厳密に従って編集する。実装は Claude Code 本体が行ってよい（転記・削除中心で Sonnet 委任のオーバーヘッドに見合わないため。分量が大きい機械的変更では委任も可。どちらにするかは design.md に明記する）。設計にない変更が必要になったら中断してステップ2に戻る。反映後 `git diff` で「意図した変更のみか・保持対象が変わっていないか」を検証する
-6. **完了** → `docs/BACKLOG.md` のステータスを Closed に更新する。`docs/CHANGELOG.md` に完了内容を記録し、案件 README のステータスを Closed に更新する。ファイルの追加・削除があった場合は `CLAUDE.md` のディレクトリ構成を最新に更新する
+6. **完了** → `docs/BACKLOG.md` のステータスを Closed に更新する。`docs/CHANGELOG.md` に完了内容を記録し、案件 README のステータスを Closed に更新する。ファイルの追加・削除があった場合は `docs/PROJECT_KNOWLEDGE.md` のディレクトリ構成を最新に更新する
 7. **テスト** → コード変更がないためテスト（自動・手動とも）は不要（不要であることを design.md に明記する）
 
 #### 運用メモ
@@ -351,11 +272,11 @@ B の行が「C をまだ行っていない / C の後」で分かれている�
 
 #### サブエージェントへの指示に必ず含めること
 
-1. **必読ドキュメントと読む順序**: CLAUDE.md → 案件ドキュメント（機能追加は `requirements.md` と `design.md`、不具合修正は `investigation.md` と、変更した場合は関連する `requirements.md` / `design.md` も必読）→ 変更対象コード → 参考にする既存テスト
+1. **必読ドキュメントと読む順序**: CLAUDE.md → `docs/PROJECT_KNOWLEDGE.md` → 案件ドキュメント（機能追加は `requirements.md` と `design.md`、不具合修正は `investigation.md` と、変更した場合は関連する `requirements.md` / `design.md` も必読）→ 変更対象コード → 参考にする既存テスト
 2. **厳密準拠の指示**: 設計書・修正計画に厳密に従うこと。書かれていない独自判断・改善・リファクタは一切禁止
 3. **想定外事象の扱い**: 想定外の事象（設計書どおりに実装できない、ドキュメントと実コードの矛盾、テストが通らない等）が発生したら、**その場で回避策を実装せず直ちに中断**し、何が起きたか・どこまで完了したかを報告して終了すること。報告を受けたら「調査・計画 → requirements.md / design.md（または investigation.md）の修正」のステップに**必ず戻る**（レビューを経てから実装を再開する）
 4. **検証まで実施**: テストの全件実行（「テスト」のルールに従う）、`tests/results/{type}-{number}_test_result.txt` への出力保存、ドキュメントに定義された動作確認（実データ実行等）
-5. **禁止事項**: git commit / push はサブエージェントに行わせない。BACKLOG.md / CHANGELOG.md / CLAUDE.md / README.md の更新も行わせない（完了ステップ8で Claude Code 本体が行う）
+5. **禁止事項**: git commit / push はサブエージェントに行わせない。BACKLOG.md / CHANGELOG.md / CLAUDE.md / README.md / docs/PROJECT_KNOWLEDGE.md の更新も行わせない（完了ステップ8で Claude Code 本体が行う）
 6. **報告形式**: 変更ファイル一覧、テスト結果サマリ、動作確認結果、想定外事象の有無
 
 #### 委任しない作業

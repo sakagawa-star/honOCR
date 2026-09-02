@@ -13,7 +13,7 @@ final の Markdown を直接手動修正すると、再OCR後に final を再構
 ## 実体の置き場所
 
 修正定義ファイルの実体は `{BASE}/ocr/fixes/{name}.json`（`{BASE}` は
-プロジェクトルートの `CLAUDE.md` に定義されたデータルート、`name` は
+`docs/PROJECT_KNOWLEDGE.md`（データ節）に定義されたデータルート、`name` は
 `chap01` 等の章名）に置く。
 
 **書籍本文の文字列を含むため、このディレクトリ（`fixes/`）にはコミットしない。**
