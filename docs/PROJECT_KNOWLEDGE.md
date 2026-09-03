@@ -25,6 +25,7 @@ honOCR の**プロジェクト知識**（データの所在と仕様・ディレ
 
 - **スキャン原本**: `{BASE2}/dewarping/chapNN/out/`（NN = 00〜09）の `page-NN_{1L,2R}.tif` 計383枚（chap00 は前付け、chap09 は付録ABC・参考文献・目次・索引）。仕様は PRML と同条件（600dpi・LZW 可逆・白紙のみ 1-bit G4）だが**大半がグレースケール**（`L`）。`out/cache/` は glob 対象外
 - **句読点スタイルは「、。」**のため、OCR 時は必ず `--punct-style touten` を指定する（feat-011）
+- **Q&A コラム見出しは全10章で 74 件**あり、2026-09-03 に全件を原本 TIF と突合した（feat-021）。結果は `{BASE2}/ocr/collation/feat-021_qa_headings.md`（書籍本文を含むためリポジトリ外）に、要約は `docs/issues/feat-021-qa-heading-source-collation/collation_summary.md` にある。**74件中 37 件が原本と不一致**（体裁19・文字14・ブロック構造3・数式18。フラグは重複する）
 - 2026-08-28 に**全10章（383ページ）の本処理が完了**（`ocr_dir.py --punct-style touten --final` で約35分、全章 PASS）。`{BASE2}/ocr/final/chap00〜09/` に最終成果物（Markdown 計約932KB＋画像421枚）がある。feat-013 の字形正規化・修正定義（`{BASE2}/ocr/fixes/` の5ファイル）も適用済み
 
 ## ディレクトリ構成（主要部分）
@@ -60,6 +61,7 @@ honOCR/
 │   ├── apply_fixes.py      # 修正定義ファイル（old→new）を md に機械適用する CLI（feat-010）
 │   ├── ocr_dir.py          # OCR 一括実行 CLI: PDF生成→MinerU→正規化→機械確認→HTML表変換→脚注挿入→修正適用（feat-006, 008, 009, 010）
 │   ├── colorize_images.py  # 図画像のカラー再切出 CLI（feat-007）
+│   ├── crop_blocks.py      # content_list のブロックを原本 TIF から切り出す CLI（feat-021）
 │   └── build_final.py      # final ディレクトリ構築 CLI: 集約＋3種類の機械検証（feat-012）
 └── tests/
     ├── test_env.py         # 環境スモークテスト（feat-001）
@@ -71,6 +73,7 @@ honOCR/
     ├── test_ocr_dir.py     # 一括実行スクリプトのテスト（feat-006）
     ├── test_colorize_images.py  # カラー再切出スクリプトのテスト（feat-007）
     ├── test_build_final.py  # final 構築スクリプトのテスト（feat-012）
+    ├── test_crop_blocks.py  # ブロック切り出しスクリプトのテスト（feat-021）
     └── results/            # テスト結果の保存先
 ```
 
@@ -97,6 +100,8 @@ honOCR/
 - MinerU は脚注（訳注）を content_list の `page_footnote` 型ブロックにのみ出力し、**Markdown には含めない**。`uv run python scripts/insert_footnotes.py <md> <content_list> -o <出力先> [--overwrite]` で md の該当ページ本文末尾の直後に blockquote（`> 4 訳注：…`）として挿入する（feat-009。`ocr_dir.py` に組み込み済みのため通常は個別実行不要。冪等・content_list 無改変。脚注ブロックは断片化・読み順乱れがあるため「断片除去 → bbox 読み順ソート → 番号プレフィックス結合」で組み立てる）。番号プレフィックスは数字・上付き数字に加え `*N` / `\*N` / `$^{N}$` / `$^{*N}$` を認識し、断片判定の比較キーは空白・`$`・`\` を除去して行う（feat-011）
 - MinerU content_list の `bbox` は 0–1000 正規化座標（ページ左上原点）。図ブロック（img_path を持つ image/chart/table）は `uv run python scripts/colorize_images.py <content_list> <TIFディレクトリ> -o <images出力先>` で原本 TIF からカラー再切出できる（feat-007。既定 1/3 縮小 = 旧画像と同等の表示サイズ。MinerU の生成画像はグレースケール PDF 由来のため必ず適用する。`ocr_dir.py --final` に組み込み済みのため通常は個別実行不要）
 - 最終成果物 `final/{name}/`（md＋content_list.json＋images/）は `uv run python scripts/build_final.py <run-NN-normalized> -o <final/chapNN> [--overwrite]` で構築する（feat-012。`ocr_dir.py --final` に組み込み済みのため通常は個別実行不要）。コピー後に3種類の機械検証（バイト同一・md の画像参照が images/ に存在・content_list の `img_path` 集合と images/ の**完全一致**）を行い、1つでも不合格なら終了コード 1。再構築時は `images/` の孤児ファイルを削除する。**出力先がコピー元と同一・入れ子、または出力先やその images/ がシンボリックリンクの場合は書き込み前に拒否する**（コピー元の成果物を壊さないため）
+- **原本 TIF の任意の領域は `crop_blocks.py` で PNG 化して目視できる**（feat-021）。`uv run python scripts/crop_blocks.py <content_list> <TIFディレクトリ> -o <出力先> --index <ブロック番号> [--margin N] [--max-width N]` で、content_list の `bbox`・`page_idx` から原本の該当領域を切り出す。**原本 TIF は Read ツールで直接開けない**（TIF 非対応）ため、原本と OCR 結果を突き合わせるにはこの経路を使う。`colorize_images.py` は `img_path` を持つ図ブロックしか扱えないのに対し、本スクリプトは本文・数式・コードのブロックも切り出せる。MinerU が見出しを分断している場合は bbox が1行目しか覆わないことがあるので、`--margin` を広げて周囲ごと確認する
+- **Q&A 見出しのような特定の要素を洗い出すときは、md の行頭走査ではなく content_list の全ブロック走査で行う**（feat-021）。md の行頭正規表現では、数式ブロック（`$$…$$`）・コードブロック（```` ``` ````）・HTML `div` に取り込まれた見出しを原理的に見つけられない。content_list なら `type`（`text`/`equation`/`code`）と `text_level`（見出しなら 2）で状態を機械的に分類でき、`bbox`・`page_idx` がそのまま原本の切り出しに使える。ただし **`apply_fixes.py` は md のみを対象とするため、修正済みの箇所は content_list と md の状態がずれる**（feat-014 で md に補完した3件は content_list では未修正のまま。両者を混同しないこと）
 - OCR の個別誤り（例: 式番号と式の誤結合。MinerU の layout 解析起因で再OCRでも再発する）は final を直接編集せず、`{BASE}/ocr/fixes/{name}.json` に old→new の修正として登録し `uv run python scripts/apply_fixes.py <md> <fixes.json> -o <出力先> --overwrite` で適用する（feat-010。書式は `fixes/template.json`・`fixes/README.md` 参照。old 不在・複数一致は全件エラーで出力なし＝再OCRで文面が変わると検出できる。冪等。**定義ファイルの実体は書籍本文を含むためコミット禁止**）。**修正を定義するときは `old` の一意性だけでなく、適用後に `new` がちょうど1件になることも必ず事前に数える**（`new` が他所に正当に存在すると最終不変条件違反でエラー停止する。feat-013 で実際に発生。一意にならない場合は `old`/`new` の両方に前後の文脈を含める）
 
 ## 分割検討の記録
@@ -106,3 +111,4 @@ honOCR/
 | 2026-09-02 | 104 | 検討不要 | 分離時点。500 行未到達 |
 | 2026-09-02 | 106 | 検討不要 | feat-019 の教訓を1行追記。500 行未到達 |
 | 2026-09-02 | 108 | 検討不要 | feat-014 の知見を1行追記。500 行未到達 |
+| 2026-09-03 | 114 | 検討不要 | feat-021 の知見2行・データの状態1行・ディレクトリ構成2行を追記。500 行未到達 |

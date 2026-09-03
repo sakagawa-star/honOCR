@@ -126,6 +126,20 @@ uv run python scripts/colorize_images.py <content_list> <TIFディレクトリ> 
 
 content_list の bbox（0–1000 正規化座標）を使い、原本 TIF から図ブロックをカラーで切り出す。縮小率の既定は 1/3（旧画像と同等の表示サイズ）、`--scale 1.0` で原寸。MinerU の生成画像はグレースケール PDF 由来のため必ず適用する。
 
+#### content_list のブロックの原本切り出し（`crop_blocks.py`）
+
+```bash
+uv run python scripts/crop_blocks.py <content_list> <TIFディレクトリ> -o <出力ディレクトリ> --index <ブロック番号> [--index ...] [--margin MARGIN] [--max-width MAX_WIDTH] [--overwrite]
+```
+
+content_list の `bbox`（0–1000 正規化座標）と `page_idx` を使い、指定したブロックの領域を原本 TIF から切り出してグレースケール PNG で保存する。OCR 結果を原本と突き合わせて確認するための道具で、`colorize_images.py` と違い図ブロック以外（本文・数式・コード）も切り出せる。
+
+- `--index` は 0 始まりのブロック番号。複数指定でき、**同じ番号の重複指定はエラー**
+- `--margin` は bbox の四方に加える余白（0–1000 正規化単位、既定 8）
+- `--max-width` は出力画像の最大幅（ピクセル、既定 1500）。超える場合は縦横比を保って縮小する
+- 出力ファイル名は `{content_list の語幹}_b{ブロック番号}_p{page_idx}.png`
+- 入力の検証をすべて済ませてから出力を始めるため、**1件でも不正があれば1件も出力せずに終了コード 1 を返す**
+
 #### final ディレクトリの構築（`build_final.py`）
 
 ```bash
