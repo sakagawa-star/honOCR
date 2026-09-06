@@ -36,7 +36,7 @@ honOCR の**プロジェクト知識**（データの所在と仕様・ディレ
 ```
 honOCR/
 ├── CLAUDE.md               # Claude Code の統治文書（開発フロー・運用ルール）
-├── AGENTS.md               # Codex が起動時に読む指示ファイル（レビュー定型指示）
+├── AGENTS.md               # Codex が起動時に読む指示ファイル（レビュー定型指示と CLAUDE.md の規定への適合確認）
 ├── README.md               # プロジェクト概要と使い方（コマンド・CLIオプション・環境）
 ├── pyproject.toml          # uv プロジェクト定義（依存・[tool.uv] 設定・cu130 インデックス）
 ├── .python-version         # Python 3.12 固定
