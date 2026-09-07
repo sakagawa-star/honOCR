@@ -1,12 +1,29 @@
 # feat-024 M2 機能設計書: 母集団の検証と逆引き可能性の判定
 
 - **案件 / マイルストーン**: feat-024 / **M2**（`docs/issues/feat-024-inline-math-markup-survey/m2-population-check/`）
-- **作成日**: 2026-09-07
+- **作成日**: 2026-09-07（第1版）／**改訂日**: 2026-09-07（**第2版**）
 - **準拠**: `docs/DESIGN_STANDARD.md`
 - **必読の関連文書**: `requirements.md`（本マイルストーンの要求と**判定基準**）/ `../roadmap.md` /
   `../survey_notes.md`（**候補の定義（§3）・逆引きの予備実測（§7）**）/ `../m1-scan-cli/design.md`（候補 TSV の列）
 
 **本設計書と上記4文書だけで実行できる。**
+
+---
+
+## 1.0 第2版の改訂（2026-09-07）
+
+**改訂の理由と第2版で変わることは `requirements.md` §1.0 に書く**（本書では再掲しない）。
+本書の変更点は次のとおり。
+
+| # | 変更 | 節 |
+|---|---|---|
+| 1 | **検査4（逆引き結果の正しさの検証）の設計を新設**（4-A の機械検査スクリプトと 4-B の原本画像による目視） | **§7A** |
+| 2 | 第1版 §7.7 の「手作業での抜き取り確認」を削除し、§7A に作り直した | §7.7 |
+| 3 | 新設スクリプト `verify_locations.py`、入力に**原本 TIF**、生成データに検証 TSV と切り出し画像を追加 | §1.2 |
+| 4 | 原本画像の切り出しは**既存の `scripts/crop_blocks.py` をそのまま実行する**（Pillow は同スクリプト経由で使う） | §1.3・§7A.3 |
+| 5 | 実験ログの構成・予測の立て方・Go/No-Go の判定表に検査4 を追加 | §8 |
+| 6 | 完了判定・作業順序・中断規則を第2版の実施範囲に合わせた（**検査1〜3 は再実施しない**） | §9.3・§10・§11 |
+| 7 | ADR を2件追加（原本画像を M2 で使う理由・`verify_locations.py` の置き場） | §12 |
 
 ---
 
@@ -17,11 +34,12 @@
 | FR-M2-001 | 検査1（除外領域の対） | §4 |
 | FR-M2-002 | 検査2（`D4` 16件の被覆） | §5 |
 | FR-M2-003 | 検査3（逆引きの成功率） | §6・§7 |
+| **FR-M2-006** | **検査4（逆引き結果の正しさの検証）** | **§7A** |
 | FR-M2-004 | 予測と実測の照合 | §8 |
 | FR-M2-005 | 判定結果の報告 | §8.3 |
 | NFR-M2-001 | データ不変性 | §9.1 |
 | NFR-M2-002 | 再現可能性 | §6.2・§9.2 |
-| NFR-M2-003 | 処理時間 | §7.5 |
+| NFR-M2-003 | 処理時間 | §7.5・§7A.5 |
 | NFR-M2-004 | 対応環境 | §1.3 |
 
 ---
@@ -34,6 +52,7 @@
 |---|---|---|
 | `m2-population-check/check_d4_coverage.py` | 検査2 のスクリプト（**ジョブスクリプト・実験コード**） | **する** |
 | `m2-population-check/locate_candidates.py` | 逆引きのスクリプト（同上。**M3 でも使う**。ADR-M2-2） | **する** |
+| `m2-population-check/verify_locations.py` | **検査4-A の機械検査スクリプト**（同上。**第2版で新設**。ADR-M2-7） | **する** |
 | `m2-population-check/experiment_log.md` | 予測・実測・照合の記録 | **する** |
 
 **検査1 はスクリプトを作らない**（`grep -c` で足りる。§4）。
@@ -44,6 +63,9 @@
 |---|---|---|
 | `{BASE2}/ocr/collation/feat-024_m2_d4_coverage.tsv` | 検査2 の結果（**見出しの文脈を含む**） | **しない**（リポジトリ外） |
 | `{BASE2}/ocr/collation/feat-024_m2_locate_sample.tsv` | 検査3 の検査標本60件と逆引き結果（**候補の文脈を含む**） | **しない**（リポジトリ外） |
+| `{BASE2}/ocr/collation/feat-024_m2_verify.tsv` | **検査4-A の分類結果**（検査3 の全列＋2列。**候補の文脈を含む**） | **しない**（リポジトリ外） |
+| `{BASE2}/ocr/collation/feat-024_m2_verify/block/*.png` | **検査4-B の原本切り出し画像**（`stage=block` 用。ブロックの領域） | **しない**（リポジトリ外。`../roadmap.md` 前提12-b） |
+| `{BASE2}/ocr/collation/feat-024_m2_verify/page/*.png` | **検査4-B の原本切り出し画像**（`stage=page` 用。ページ全体） | **しない**（同上） |
 
 ### 入力（すべて読み取りのみ）
 
@@ -52,6 +74,7 @@
 | `{BASE2}/ocr/collation/feat-024_candidates.tsv` | M1 の候補 TSV（4,782行＋ヘッダ） |
 | `{BASE2}/ocr/final/chapNN/chapNN_gray300.md` | 成果物 md（全10章） |
 | `{BASE2}/ocr/final/chapNN/chapNN_gray300_content_list.json` | content_list（全10章） |
+| `{BASE2}/dewarping/chapNN/out/page-*.tif` | **原本 TIF**（検査4-B の切り出し元。`../roadmap.md` M2 の入力。**読み取りのみ**） |
 
 ### 依存関係
 
@@ -61,9 +84,17 @@
    md ────┴────────┘
           │
           └─▶ locate_candidates.py ──▶ locate_sample.tsv   （検査3）
-                     ▲
-   content_list ─────┘
+                     ▲                        │
+   content_list ─────┤                        │
+                     │                        ▼
+   md ───────────────┴──▶ verify_locations.py ──▶ verify.tsv        （検査4-A）
+                                                    │
+                                                    ▼（対象の選定）
+   content_list ＋ 原本 TIF ──▶ scripts/crop_blocks.py ──▶ verify/*.png（検査4-B）
 ```
+
+**検査4 の入力は「検査3 の出力 TSV」である。** 第2版では検査1〜3 を再実施せず、
+第1版が出力した `feat-024_m2_locate_sample.tsv` をそのまま使う（`requirements.md` §1.0）。
 
 **`scripts/scan_plain_math.py`（M1）を変更しない。** 本マイルストーンは M1 の出力を入力に使うだけである。
 
@@ -76,7 +107,10 @@
     （M1 が `csv` を使わないのは**出力**の書式を単純に保つためであり〔`../m1-scan-cli/design.md` ADR-M1-5〕、
     読み取りには制約がない）。ただし**出力の TSV は M1 と同じ流儀**（タブ区切り・引用符なし・
     タブと改行を半角スペースに置換）で書く
-  - **Pillow を import しない**（原本画像を開かない。`requirements.md` §1.7 範囲外4）
+  - **新設するスクリプトは Pillow を import しない**（標準ライブラリのみ）
+- **原本画像の切り出しは既存の `scripts/crop_blocks.py`（feat-021）をそのまま実行する**。
+  同スクリプトは既存依存の Pillow を使う。**`scripts/` 配下のコードは変更しない**
+  （`requirements.md` §1.5 制約8）
 - `docs/TECH_STACK.md` は**更新しない**（依存が増えないため）
 
 ---
@@ -372,7 +406,7 @@ key10 を部分文字列として含むブロックを探す。
 **章の端（`page_head` / `page_tail`）を `page` とする理由**: そこでは構造上もう一方が存在せず、
 一致検証が**原理的にできない**。これを `none` にすると、逆引き手順の欠陥ではなく
 **候補の位置だけを理由に失敗が積み上がる**。件数は出力に記録し、
-§7.7 の抜き取り確認で優先的に選ぶ。
+**§7A.4 の 4-B で優先的に選ぶ**（`requirements.md` FR-M2-006 4-B の (ii) の並べ替えの規則）。
 
 **`search_exhausted` を `none` とする理由**: その方向に候補は存在するのに 200 件走査して
 1件も逆引きできなかった場合、そもそもその近傍の逆引きが信頼できない。
@@ -447,31 +481,248 @@ M1 と同じく、**同一ディレクトリの一時ファイルに書き `os.r
 2. **予備実測との整合**: 所在別の成功率が `../survey_notes.md` §7.1 の予備実測
    （`body` 91.4% / `footnote` 75.7%）と**桁違いに乖離していないこと**を目視で確認する。
    乖離した場合は原因を特定してから判定に進む（§8.2 の照合）
-3. **手作業での抜き取り確認（`requirements.md` FR-M2-003 受け入れ基準2-b）**:
-   - **選び方は決定的とする。乱数を使わない。** stage ごとに次の順で並べ、先頭から
-     `min(3, その stage の件数)` 件を採る
-
-     | stage | 並べ替えの規則 |
-     |---|---|
-     | `page` | `reason` の優先順（`page_head` → `page_tail` → `page_both`）→ `chapter` 昇順 → `offset` 昇順 |
-     | `block` | `reason` の優先順（`block_key30` → `block_key10`）→ `chapter` 昇順 → `offset` 昇順 |
-
-   - **`stage=block` の確認**: `block_index` の content_list のブロックの `text` に、
-     候補の `context` に対応する文字列が含まれることを目視で確認する
-   - **`stage=page` の確認**: 推定した `page_idx` を持つ content_list のブロック群
-     （`page_idx` が一致する全ブロック）の `text` を連結し、候補の `context` に対応する文字列が
-     含まれることを目視で確認する
-   - **件数が 0 の stage は「確認対象なし」と記録し、Go の判定に影響させない**
-     （例: 60件すべてが `block` で特定できた場合、`page` の確認は行わない）
-   - **確認した件のうち1件でも含まれていなければ、逆引きの手順に欠陥があるとみなし、
-     成功率が 90% 以上でも Go にしない**（§8.3）
-   - **原本 TIF は開かない**（`requirements.md` §1.7 範囲外4）。content_list のテキストだけで確認する
-   - **選んだ件の `chapter`・`offset`・`stage`・`reason` と確認結果**を `experiment_log.md` に
-     記録する（`requirements.md` FR-M2-003 受け入れ基準2-c）。
-     **記録が無い、または記録された件が上表の選択規則の順序と一致しない場合は、
-     抜き取り確認を満たしたとみなさない**
+3. **逆引き結果の正しさの検証**: **§7A（検査4）** で行う。
+   第1版にあった「手作業での抜き取り確認」は、確認手段が対象の性質に合っておらず
+   （候補の `context` が md 上で要素の境界をまたぐ）、**§7A に作り直した**
+   （`requirements.md` §1.0）
 
 ---
+
+## 7A. 検査4: 逆引き結果の正しさの検証（FR-M2-006）
+
+**入力は検査3 の出力 TSV**（`{BASE2}/ocr/collation/feat-024_m2_locate_sample.tsv`。第1版が出力済み）。
+**対象は `stage != none` の全件**（第1版の実測では 56 件）。
+
+**判定における位置づけ**（`requirements.md` §1.0・FR-M2-006）:
+
+- **4-A は測定と 4-B の対象選定**であり、**その区分を Go / No-Go の合否条件にしない**
+  （規則の予備確認を先に行っており、結果がおおむね既知であるため）
+- **合否は 4-B（原本画像による目視）で判定する**。4-A が**要確認**とした件
+  （`block_mismatch` / `page_mismatch_line` / `neighbor_mismatch` / `undetermined`）は
+  **件数にかかわらず全件を 4-B の対象に加えて原本で決着させる**（件数による中断条件は設けない）
+
+### 7A.1 `verify_locations.py` の仕様
+
+**配置**: `m2-population-check/verify_locations.py`（ジョブスクリプト・実験コード。ADR-M2-7）
+
+| 引数 | 種別 | 既定 | 説明 |
+|---|---|---|---|
+| `--located` | 必須 | — | 検査3 の出力 TSV のパス |
+| `--final-root` | 必須 | — | `{BASE2}/ocr/final`（md と content_list を含む章ディレクトリの親） |
+| `--neighbor-lines` | 任意 | **50** | 前後に走査する論理行の上限（片側あたり） |
+| `-o` / `--out` | 必須 | — | 出力 TSV のパス |
+| `--overwrite` | フラグ | 偽 | 既存ファイルの上書きを許可する |
+
+```python
+MIN_KEY: int = 6  # 行キーの最小長（これ未満は一意性の判定に使わない）
+
+def norm(s: str) -> str:
+    """§7.2 と同一の正規化（正規表現 [\\s#>|*\\\\_`\\-:]+ にマッチする文字を除去）。"""
+
+def load_blocks(content_list: Path) -> list[tuple[int, str, int]]:
+    """content_list を読み、text を持つブロックを (block_index, norm(text), page_idx) で返す。
+    §7.1 の load_blocks と同じ扱いにする。"""
+
+def line_span(md: str, offset: int) -> tuple[int, int]:
+    """offset を含む論理行の [開始, 終了) を返す（直前の改行の次から、次の改行の直前まで。
+    改行が無ければ文字列の端まで）。"""
+
+def unique_block(blocks: list, key: str) -> tuple[int, int] | None:
+    """key（正規化済み）を部分文字列として含むブロックがちょうど1件のとき
+    (block_index, page_idx) を返す。len(key) < MIN_KEY のとき、および
+    0 件・2 件以上のときは None を返す。"""
+
+def classify(md: str, blocks: list, row: dict, neighbor_lines: int) -> tuple[str, str]:
+    """1件を分類し、(verdict, evidence) を返す。verdict は §7A.2 の8区分。"""
+
+def main(argv: list[str] | None = None) -> int: ...
+```
+
+### 7A.2 分類のロジック
+
+章ごとに md と content_list を**1度だけ**読み、`norm` 済みブロック一覧を再利用する（§7.2 と同じ）。
+
+**共通の前処理**:
+
+```
+ls, le = line_span(md, offset)
+L = norm(md[ls:le])            # 行キー
+```
+
+**`stage == "block"` の分類**（`block_index` は検査3 の出力列）:
+
+```
+B = blocks[block_index] の norm(text)
+
+len(L) >= MIN_KEY かつ L が B の部分文字列        → verdict="line_in_block"   evidence="block={block_index}"
+len(B) >= MIN_KEY かつ B が L の部分文字列        → verdict="block_fragment"  evidence="block={block_index}"
+len(L) <  MIN_KEY                                 → verdict="undetermined"    evidence="short_line_key"
+それ以外                                          → verdict="block_mismatch"  evidence="block={block_index}"
+```
+
+**判定の順序は上から順に評価する**（先に成立した区分を採る）。
+
+**`stage == "page"` の分類**（`page_idx` は検査3 の出力列。以下 `P` と書く）:
+
+```
+u = unique_block(blocks, L)
+
+u が None でない:
+    u.page_idx == P → verdict="line_unique_page"    evidence="uniq_block={u.block_index}"
+    u.page_idx != P → verdict="page_mismatch_line"  evidence="uniq_block={u.block_index},page={u.page_idx}"
+
+u が None:
+    # 前後の一意対応行を探す（走査は同じ章の md の論理行）
+    bwd = 候補の論理行の1つ前の行から前方向へ最大 neighbor_lines 行走査し、
+          最初に unique_block(blocks, norm(行)) が None でなかった行の page_idx（無ければ None）
+    fwd = 候補の論理行の1つ後の行から後方向へ最大 neighbor_lines 行走査し、同様（無ければ None）
+
+    bwd is not None かつ fwd is not None:
+        bwd == P かつ fwd == P → verdict="neighbor_bracket"   evidence="bwd_page={bwd},fwd_page={fwd}"
+        それ以外               → verdict="neighbor_mismatch"  evidence="bwd_page={bwd},fwd_page={fwd}"
+    それ以外:
+        verdict="undetermined"  evidence="no_unique_neighbor,bwd={bwd},fwd={fwd}"
+```
+
+**空行・数式ブロックの区切り行なども走査の対象に含めてよい**——それらの行キーは短いか
+一意にならないため、`unique_block` が `None` を返して自然に読み飛ばされる。
+
+**この照合が逆引きの再実行にならない理由**（`requirements.md` FR-M2-006 参照）: 逆引きは
+候補の**前後10文字（必要なら30文字）**のキーで探すのに対し、4-A は**論理行の全体**を単位とし、
+決着しない場合は**前後の一意対応行**でページを挟み込む。**単位も決着のつけ方も異なる。**
+
+**`evidence` に書籍本文を書かない**（数値と区分のみ。`requirements.md` §1.5 制約1）。
+
+### 7A.3 出力 TSV の仕様
+
+ヘッダ行（検査3 の出力 TSV の全11列 ＋ 2列 = **13列**）:
+
+```
+chapter	line	offset	kind	location	symbol	context	stage	block_index	page_idx	reason	verdict	evidence
+```
+
+| 追加列 | 内容 |
+|---|---|
+| `verdict` | §7A.2 の8区分（`line_in_block` / `block_fragment` / `line_unique_page` / `neighbor_bracket` / `block_mismatch` / `page_mismatch_line` / `neighbor_mismatch` / `undetermined`） |
+| `evidence` | 判定の根拠となる数値（上記の `evidence`）。**書籍本文を含めない** |
+
+**`stage == "none"` の行は出力に含めない**（検証の対象外。`requirements.md` FR-M2-006 の対象定義）。
+
+**標準エラーへのサマリ**:
+
+```
+verified: total={t}
+pass: line_in_block={a} block_fragment={b} line_unique_page={c} neighbor_bracket={d}
+conflict: block_mismatch={e} page_mismatch_line={f} neighbor_mismatch={g}
+undetermined: {h}
+```
+
+**`conflict` の合計が「積極的な食い違い」の件数**である（`requirements.md` FR-M2-006 4-A 受け入れ基準2）。
+
+### 7A.4 4-B の手順（原本画像による目視確認）
+
+**手順1: 対象の決定**（`requirements.md` FR-M2-006 4-B の (i)(ii)）。
+4-A の出力 TSV を `verdict` と選択規則で並べ替えて確定し、**確認前に**対象一覧
+（`chapter` / `offset` / `stage` / `reason` / `verdict`）を `experiment_log.md` に書く。
+
+**手順2: 切り出す `--index` の決定**
+
+| stage | `--index` に与える値 |
+|---|---|
+| `block` | 検査3 の出力列 `block_index` をそのまま使う |
+| `page` | **推定ページ `page_idx` に属するブロックのうち `block_index` が最小のもの**（決定的に定まる） |
+
+`page` の `--index` は次のコマンドで求める（`NN` は章、`P` は `page_idx`）:
+
+```bash
+B2=/home/sakagawa/work/確率統計
+python3 -c "
+import json,sys
+cl=json.load(open(sys.argv[1],encoding='utf-8'))
+p=int(sys.argv[2])
+print(min(i for i,b in enumerate(cl) if b.get('page_idx')==p))
+" $B2/ocr/final/chapNN/chapNN_gray300_content_list.json P
+```
+
+**手順3: 切り出し**（既存 CLI をそのまま実行する。`scripts/` を変更しない）
+
+**切り出しは `(chapter, stage, --index に与える値)` で重複排除し、1枚だけ生成する。**
+`crop_blocks.py` の出力ファイル名は `{stem}_b{index}_p{page_idx}.png` であり、
+**同名のファイルが既にあると `--overwrite` なしでは失敗する**。同じブロック・同じページに
+複数の対象が属することがあるため、**同じ組が2回以上現れたら2回目以降は切り出しを行わず、
+各件の記録から同じファイル名を参照する**。**`--overwrite` は使わない**（既存の画像を再生成しない）。
+
+**重複排除のキーに `stage` を含める理由**: `stage=block` は**ブロックの領域**（`--margin 8`）、
+`stage=page` は**ページ全体**（`--margin 1000`）を必要とし、**確認する範囲が異なる**。
+`stage=page` の `--index` は「そのページの最小 `block_index`」であるため、
+**`stage=block` の対象と同じ `index` になることがある**。同名衝突を避けるため、
+**出力先を `block/` と `page/` の別ディレクトリに分ける**（上表）。
+
+```bash
+B2=/home/sakagawa/work/確率統計
+OUT=$B2/ocr/collation/feat-024_m2_verify
+mkdir -p $OUT/block $OUT/page
+
+# stage=block の件（ブロックの領域だけを切り出す）
+uv run python scripts/crop_blocks.py \
+  $B2/ocr/final/chapNN/chapNN_gray300_content_list.json \
+  $B2/dewarping/chapNN/out -o $OUT/block --index {block_index} --margin 8 --max-width 1500
+
+# stage=page の件（ページ全体を切り出す。--margin 1000 で bbox がページ全体にクランプされる）
+uv run python scripts/crop_blocks.py \
+  $B2/ocr/final/chapNN/chapNN_gray300_content_list.json \
+  $B2/dewarping/chapNN/out -o $OUT/page --index {手順2 で求めた index} --margin 1000 --max-width 1600
+```
+
+出力ファイル名は `crop_blocks.py` の規則により
+`{content_list のファイル名の stem}_b{index}_p{page_idx}.png` になる。
+**`--margin 1000` でページ全体になることは実データで確認済み**（chap06 `page_idx=8`）。
+
+**手順4: 目視と判定**
+
+Claude Code 本体が PNG を開き、`requirements.md` FR-M2-006 4-B の受け入れ基準に従って判定する。
+
+| stage | 確認すること |
+|---|---|
+| `block` | **候補の論理行に対応する行**が切り出したブロックの領域の中にあり、その行の中に候補の記号がある |
+| `page` | **候補の論理行に対応する行**がそのページの中にあり、その行の中に候補の記号がある |
+
+**確認の単位は「記号」ではなく「候補の論理行」である**（`requirements.md` FR-M2-006 4-B）。
+同じ記号が同一ページ内の別の場所に現れていることがあるため、記号だけを探すと
+**別の出現を見て OK と判定してしまう**。判定の基準（同定の基準と NG の3条件）は
+`requirements.md` FR-M2-006 4-B の「確認の方法」に従う。
+
+**確かめるのは「候補がそこに存在すること」だけであり、記号が数式組版かどうかは判定しない**
+（`requirements.md` FR-M2-006 4-B 受け入れ基準3。それは M4 の作業である）。
+
+**手順5: 記録**
+
+各件の `chapter` / `offset` / `stage` / `reason` / `verdict` / 画像ファイル名 / 確認結果（OK・NG）を
+`experiment_log.md` に記録する。**書籍本文は書かない。**
+**複数の件が同じ画像を参照する場合は、同じファイル名を各件に記録する**（手順3 の重複排除）。
+**ファイル名は `block/` / `page/` のどちらかを含めて記録する**（同じ `index` で別の画像がありうるため）。
+**確認結果は `OK` / `NG-not_found` / `NG-ambiguous` / `NG-no_symbol` の4値で記録する**
+（`requirements.md` FR-M2-006 4-B 受け入れ基準2）。
+
+### 7A.5 エラーハンドリングと境界条件
+
+| 事象 | 動作 |
+|---|---|
+| `--located` の TSV が存在しない・読めない | 標準エラーへメッセージ、**終了コード 1** |
+| `--final-root` の下に章ディレクトリが無い | 同上 |
+| content_list が読めない・配列でない | 同上 |
+| 出力先が既存で `--overwrite` 未指定 | 同上。**既存ファイルを変更しない** |
+| `block_index` が content_list の範囲外 | 同上（検査3 の出力が壊れていることを意味する） |
+| `stage` が `block` / `page` / `none` 以外 | 同上 |
+| 対象（`stage != none`）が 0 件 | 同上（検査3 の結果と矛盾する） |
+| `crop_blocks.py` が `--index` の検証で失敗する | **中断して報告する**（§11 中断規則4） |
+
+**出力の原子性**: §7.6 と同じ（同一ディレクトリの一時ファイルに書き `os.replace` で置換）。
+
+**処理時間**（NFR-M2-003）: 対象は 60 件以下であり、章ごとに content_list を1度読んで
+`norm` 済み文字列を再利用するため、4-A は **5 分以内**に完了する。
+4-B の切り出しは対象1件につき TIF を1枚開くだけであり、**5 分以内**に完了する。
+
 
 ## 8. 予測と実測の照合（FR-M2-004）
 
@@ -495,16 +746,31 @@ M1 と同じく、**同一ディレクトリの一時ファイルに書き `os.r
 ## 検査3: 逆引きの成功率
 （同じ構成。段階別件数・成功率・所在別の内訳）
 
+## 検査4: 逆引き結果の正しさ
+### 4-A: 機械検査（予測 → 実測 → 照合）
+（区分別件数・積極的な食い違いの件数・undetermined の件数）
+### 4-B: 原本画像による目視確認（予測 → 実測 → 照合）
+（対象一覧〔chapter / offset / stage / reason / verdict〕・画像ファイル名〔`block/` または `page/` を含む〕・
+確認結果〔**`OK` / `NG-not_found` / `NG-ambiguous` / `NG-no_symbol` の4値**〕。
+要確認の件は 4-A が要確認とした原因も記録する）
+
 ## 判定
 （Go / No-Go と、その根拠）
 ```
+
+**第2版で追記するのは「検査4」節と「判定」節である。**
+検査1〜3 の節は第1版の記録をそのまま残す（`requirements.md` §1.0）。
+**第1版の「抜き取り確認」節と「判定」節は削除せず、第2版の記録を追記する**
+（`CLAUDE.md`「実験・検証の進め方」の記録は履歴として残す）。
 
 **書籍本文を書かない**（件数と判定のみ。`requirements.md` §1.5 制約1）。
 
 ### 8.2 予測の立て方
 
 **各検査の実行直前に、その検査の予測を数値で書いてから実行する**（`CLAUDE.md` 手順2）。
-**3つの検査の予測を一括で先に書かない**——検査1・2 の結果が検査3 の予測に影響するためである。
+**検査の予測を一括で先に書かない**——前段の結果が後段の予測に影響するためである。
+**4-B の予測は 4-A の実測が出てから書く**（4-B の対象は 4-A の結果で決まる。
+`requirements.md` FR-M2-004 受け入れ基準4）。
 
 予測の根拠に使える実測値:
 
@@ -513,6 +779,8 @@ M1 と同じく、**同一ディレクトリの一時ファイルに書き `os.r
 | 検査1 | `../survey_notes.md` §3.2（奇数個の `$` を含むブロックは 0 件）。ただし**行頭 `$$` の対の偶奇は未実測** |
 | 検査2 | `../survey_notes.md` §1.2（16件の一覧）。**被覆の件数は未実測** |
 | 検査3 | `../survey_notes.md` §7.1（1段階目のみの成功率: `body` 91.4% / `footnote` 75.7%）。**2段階目を含めた成功率は未実測** |
+| **検査4-A** | 第1版の検査3 の実測（`block` 50 / `page` 6 / `none` 4、`reason` の内訳）。**規則を確定する前に実データへ当てた予備確認の結果がある**（`requirements.md` §1.0）ため、**予測はその結果を根拠にしてよい**。予備確認を根拠にしたことを予測に明記する |
+| **検査4-B** | 4-A の実測（対象の件数はここで確定する）。**原本に候補が存在するかは未実測** |
 
 ### 8.3 判定（FR-M2-005）
 
@@ -520,8 +788,11 @@ M1 と同じく、**同一ディレクトリの一時ファイルに書き `os.r
 
 | 判定 | 条件 | 次の行き先 |
 |---|---|---|
-| **Go** | 逆引き成功率が **90% 以上**（`none` が 6 件以下）**かつ** §7.7 の抜き取り確認（各 stage について `min(3, 件数)` 件）に**全件合格**（件数 0 の stage は対象外） | **M3 に進む** |
-| **No-Go** | 上の条件のいずれかを満たさない | **M3 に進まない。** 「満たさなかった事実」「所在別の内訳」「`none` の内訳（`page_mismatch` / `no_neighbor`）」「抜き取り確認の結果」「逆引き手順の見直し案」を報告し、`../roadmap.md` の改訂に進むかどうかユーザーの判断を仰ぐ |
+| **Go** | 次の2つを**ともに**満たす: (1) 逆引き成功率が **90% 以上**（`none` が 6 件以下）、(2) **検査4-B の対象の全件で候補の記号が原本に存在する** | **M3 に進む** |
+| **No-Go** | 上の2つのいずれかを満たさない | **M3 に進まない。** 「満たさなかった条件」「所在別の内訳」「`none` の内訳」「4-A の区分別件数」「4-B の確認結果」「原因の切り分け（逆引きの手順の欠陥か、検証手段の限界か）」「見直し案」を報告し、`../roadmap.md` の改訂に進むかどうかユーザーの判断を仰ぐ |
+
+**(1) は第1版で実測済み（93.3%）である。** 第2版で新たに測るのは (2) である。
+**4-A の区分は合否条件に含めない**（`requirements.md` §1.0。4-A は 4-B の対象を決めるために使う）。
 
 **合格ラインを事後に変更しない**（`requirements.md` §1.5 制約5）。
 
@@ -546,6 +817,9 @@ diff /tmp/feat024_m2_before.sha256 /tmp/feat024_m2_after.sha256; echo "DIFF_EXIT
 **合格条件**: `DIFF_EXIT=0`（無出力）かつ行数が前後で同数（**3,551**）。
 出力先の `{BASE2}/ocr/collation/` は上記4ディレクトリに含まれない。
 
+**第2版では検査4-B で `dewarping/` の原本 TIF を開く**（`crop_blocks.py` は入力を変更しない）。
+`dewarping/` は上記4ディレクトリに含まれるため、**この検証がそのまま原本の不変性の担保になる**。
+
 ### 9.2 既存テストの非破壊確認
 
 本マイルストーンは `scripts/` 配下を変更しないが、念のため既存テストを実行する。
@@ -566,15 +840,16 @@ uv run pytest -v 2>&1 | tee tests/results/feat-024_test_result.txt
 | 1 | 検査1 が全10章で合格（`fence` と `disp` がともに偶数） | FR-M2-001 受け入れ基準1・2 |
 | 2 | 検査2 の16件すべてについて状態が記録され、**`heading_not_found` が 0 件**であり、`not_covered` の件に**分類（`not_covered_reason`）が付いている**。分類別の件数が `experiment_log.md` に記録されている | FR-M2-002 受け入れ基準1〜3 |
 | 3 | 検査3 の段階別件数・成功率・所在別の内訳・`none` の内訳が記録されている | FR-M2-003 受け入れ基準2 |
-| 3-b | §7.7 の抜き取り確認（各 stage について `min(3, 件数)` 件）を実施し、結果が記録されている。件数 0 の stage は「対象なし」と記録されている | FR-M2-003 受け入れ基準2-b |
-| 3-c | 抜き取り確認で選んだ各件の `chapter`・`offset`・`stage`・`reason` と確認結果が `experiment_log.md` に記録され、**選択規則の順序と一致する**ことが追えるようになっている | FR-M2-003 受け入れ基準2-c |
+| 3-b | **検査4-A** を実施し、逆引きに成功した全件に区分が付き、**区分別の件数**と**要確認の合計件数**が `experiment_log.md` に記録されている。**要確認の件が 4-B の対象(i) として全件挙がっている** | FR-M2-006 4-A 受け入れ基準1〜3 |
+| 3-c | **検査4-B** を実施し、対象（(i) **要確認**〔`block_mismatch` / `page_mismatch_line` / `neighbor_mismatch` / `undetermined`〕の**全件** ＋ (ii) stage ごとの `min(3, 合格件数)` 件）の各件について `chapter`・`offset`・`stage`・`reason`・`verdict`・画像ファイル名・確認結果が `experiment_log.md` に記録され、**選択規則の順序と一致する**ことが追えるようになっている | FR-M2-006 4-B 受け入れ基準2 |
+| 3-d | 検査4-A の出力 TSV が生成され、**同じ入力に対する再実行が同一の出力になる** | FR-M2-006 4-A 受け入れ基準5 |
 | 4 | 検査標本の抽出が再現する（`diff` が無出力） | FR-M2-003 受け入れ基準5・NFR-M2-002 |
-| 5 | 3つの検査すべてで予測が実行前に記録され、実測と照合されている | FR-M2-004 |
+| 5 | **検査4-A・4-B について予測が実行前に記録され、実測と照合されている**（検査1〜3 は第1版で記録済み） | FR-M2-004 |
 | 6 | Go / No-Go が `experiment_log.md` に明記されている | FR-M2-005 |
 | 7 | §9.1 の `DIFF_EXIT=0`（3,551 ファイル） | NFR-M2-001 |
 | 8 | §9.2 が 260 passed | — |
 
-**完了条件に「逆引き成功率が 90% 以上であること」を入れない。**
+**完了条件に「逆引き成功率が 90% 以上であること」「検査4 に合格すること」を入れない。**
 満たさない場合に M2 が完了できず、再計画で挿入するマイルストーンを開始できなくなるためである
 （`../roadmap.md` M4 と同じ理由）。**充足の判定は §8.3 の Go / No-Go で扱う。**
 
@@ -582,25 +857,29 @@ uv run pytest -v 2>&1 | tee tests/results/feat-024_test_result.txt
 
 ## 10. 実装フェーズの作業順序
 
-**Sonnet サブエージェントに委任するのは 2〜4 のみ**（スクリプトの実装）。
+**第2版で実施するのは検査4 だけである**（検査1〜3 は第1版で実施済み。`requirements.md` §1.0）。
+**Sonnet サブエージェントに委任するのは 2・3 のみ**（スクリプトの実装とテスト実行）。
 検査の実施・予測・判定は Claude Code 本体が行う（ADR-M2-4）。
 
 | # | 作業 | 担当 |
 |---|---|---|
 | 1 | §9.1 の事前 SHA-256 取得 | 本体 |
-| 2 | `check_d4_coverage.py` の実装 | **Sonnet** |
-| 3 | `locate_candidates.py` の実装 | **Sonnet** |
-| 4 | §9.2 の既存テスト実行と結果保存 | **Sonnet** |
-| 5 | 検査1 の予測 → 実行 → 照合 | 本体 |
-| 6 | 検査2 の予測 → 実行 → 照合 | 本体 |
-| 7 | §7.7 の抜き取り確認（各 stage について `min(3, 件数)` 件）。**検査3 の実行後に行う**（`stage` が確定してから選ぶため。作業順は 8 → 9 → 7 → 10） | 本体 |
-| 8 | 検査3 の予測 → 実行 → 照合 | 本体 |
-| 9 | §6.2 の再現性確認 | 本体 |
-| 10 | §8.3 の Go / No-Go 判定 | 本体 |
-| 11 | §9.1 の事後 SHA-256 取得と照合 | 本体 |
-| 12 | §9.3 の完了判定 | 本体 |
+| 2 | **`verify_locations.py` の実装**（§7A.1・§7A.2・§7A.3・§7A.5） | **Sonnet** |
+| 3 | §9.2 の既存テスト実行と結果保存 | **Sonnet** |
+| 4 | **検査4-A の予測** → 実行 → 照合 | 本体 |
+| 5 | 4-A の**再実行による同一性の確認**（§9.3 判定3-d） | 本体 |
+| 6 | **検査4-B の対象の確定**（4-A の結果から。§7A.4 手順1）と**予測** | 本体 |
+| 7 | 検査4-B の画像切り出し（§7A.4 手順2・3） | 本体 |
+| 8 | 検査4-B の目視・判定・記録（§7A.4 手順4・5） | 本体 |
+| 9 | §8.3 の Go / No-Go 判定 | 本体 |
+| 10 | §9.1 の事後 SHA-256 取得と照合 | 本体 |
+| 11 | §9.3 の完了判定 | 本体 |
 
-**5・6・8 は予測を `experiment_log.md` に書いてから実行する**（§8.2）。
+**4・6 は予測を `experiment_log.md` に書いてから実行する**（§8.2）。
+
+**第1版で実施済みのため第2版で行わない作業**: 検査1（§4）・検査2（§5）・検査3（§6・§7）の実行、
+`check_d4_coverage.py` と `locate_candidates.py` の実装。**これらのスクリプトも変更しない**
+（完了済みの実測との対応を保つため）。
 
 ---
 
@@ -613,6 +892,14 @@ uv run pytest -v 2>&1 | tee tests/results/feat-024_test_result.txt
 3. `{BASE2}` のファイルに変更が生じた → **即時中断**
 4. 設計書どおりに実行できない事象が起きた → その場で回避策を実装せず**中断して報告する**
 5. 同じ原因での失敗が2回続いたら、3回目に進まず前提を疑う（`CLAUDE.md`「行き詰まり検出」）
+6. **検査4-A の結果を理由に作業を止めない。** 要確認（積極的な食い違い3区分 ＋ `undetermined`）は
+   **件数にかかわらず全件**を 4-B の対象(i) として原本で確認し、
+   **原因（逆引きの誤りか、検査規則の限界か）を記録してから判定に進む**。
+   判定は §8.3 に従う（**4-A の区分は合否条件ではない**。原本で候補が確認できなければ No-Go）。
+   `requirements.md` FR-M2-006 4-A 受け入れ基準4
+8. **M2 の再計画は本件（第2版）で2回目である。** さらに再計画が必要になった場合は
+   **3回目に進まず**、M2 の目的・完了条件、さらに `../roadmap.md` の前提・分割まで遡って疑う
+   （`CLAUDE.md`「行き詰まり検出」。`experiment_log.md` の第1版の判定節に同じ記載がある）
 
 ---
 
@@ -640,11 +927,11 @@ uv run pytest -v 2>&1 | tee tests/results/feat-024_test_result.txt
 
 ### ADR-M2-3: 本マイルストーンのスクリプトに pytest のテストを書かない
 
-- **採用**: テストを書かず、§7.7 の3つの検証（再現性・予備実測との整合・抜き取り確認）で担保する
+- **採用**: テストを書かず、§7.7 の3つの検証（再現性・予備実測との整合・**§7A の検査4**）で担保する
 - **却下**: M1 と同じように `tests/` にテストを書く
 - **理由**: ADR-M2-2 のとおり、本スクリプトは案件固有のジョブスクリプト・実験コードであり、
   `CLAUDE.md` の「テスト」節が対象とする `scripts/` 配下のプロダクトコードではない。
-  逆引きの正しさは**実データでの成功率と抜き取り確認**でしか確かめられず
+  逆引きの正しさは**実データでの成功率と検査4（機械検査＋原本画像による目視）**でしか確かめられず
   （合成データのテストでは md と content_list の実際の表記差を再現できない）、
   pytest を書いても検証の実質が増えない
 
@@ -654,7 +941,7 @@ uv run pytest -v 2>&1 | tee tests/results/feat-024_test_result.txt
 - **却下**: 検査の実施まで委任する
 - **理由**: `CLAUDE.md`「実験・検証の進め方」は**実行直前の予測**と**実測との照合**を求めており、
   これは設計書に手続きとして書ける作業ではない（前段の結果を踏まえた判断を伴う）。
-  また §7.7 の抜き取り確認は目視判断である。feat-021 が突合の実施を委任しなかったのと同じ判断である
+  また §7A の 4-B は**原本画像の目視判断**である。feat-021 が突合の実施を委任しなかったのと同じ判断である
 
 ### ADR-M2-5: 検査標本の乱数シードを M3 と別にする
 
@@ -664,3 +951,45 @@ uv run pytest -v 2>&1 | tee tests/results/feat-024_test_result.txt
   判定する」ために使う。同じ候補を両方に使うと、**逆引きに成功した候補が標本に多く含まれる偏り**が
   生じうる（検査3 で `none` だった候補を M3 の標本から外したくなる誘惑が生まれる）。
   独立に抽出することで、この偏りを構造的に排除する
+
+### ADR-M2-6: 逆引きの正しさの確認に原本画像を使う（第2版）
+
+- **採用**: 検査4 を **4-A（md と content_list の機械照合・全件）** と
+  **4-B（原本 TIF の切り出し画像による目視・少数）** の2段構えにする
+- **却下1**: md と content_list の照合だけで完結させる（原本を開かない）
+- **却下2**: 原本画像の目視だけにする（機械検査を行わない）
+- **理由**: 却下1 は、**md と content_list の対応だけでは決着しない型が実在する**ため採れない
+  （原本の図キャプションのように、md には行があるが content_list に対応テキストを持たない要素がある。
+  `../roadmap.md` 前提14。第1版の抜き取り対象6件のうち1件がこの型であった）。
+  却下2 は、目視できる件数が少なく**網羅性が無い**（第1版は6件で、逆引き56件のうち約1割しか見ていない）。
+  **4-A で全件の整合を機械的に見て、4-B で原本という外部の基準に照らす**ことで、
+  網羅性と基準の独立性の両方を得る。
+  原本ページ全体の切り出しは**既存の `crop_blocks.py --margin 1000` で追加実装なしに行える**ことを
+  実データで確認済みである（chap06 `page_idx=8`）
+
+### ADR-M2-7: `verify_locations.py` を M2 のフォルダに置く（第2版）
+
+- **採用**: `m2-population-check/verify_locations.py` に置く（**ジョブスクリプト・実験コード**）
+- **却下**: `scripts/` に置く（プロダクトコードとして扱う）
+- **理由**: `CLAUDE.md`「ドキュメント作成ルール」の判定基準「**その案件が終わった後も使うか**」に
+  照らすと、本スクリプトは**M2 の逆引き結果を検証するためだけ**の処理であり
+  （入力は検査3 の出力 TSV という本案件固有の形式で、判定区分も本案件の逆引き規則に強く依存する）、
+  他の入力・他の案件では使わない。ADR-M2-2（`locate_candidates.py`）と同じ判定である。
+  **M3 以降で同種の検証が必要になった場合も、完了済みの M2 のファイルは変更せず
+  「ロードマップの改訂（再計画）」に従う**
+
+### ADR-M2-8: 検査4-A を合否条件にせず、判定を 4-B（原本）に置く（第2版）
+
+- **採用**: 4-A は**測定と 4-B の対象選定**に用い、Go / No-Go の条件は
+  「逆引き成功率（第1版で実測）」と「4-B の全件で候補が原本に存在すること」の2つにする
+- **却下1**: 4-A の「積極的な食い違い 0 件」を合否条件に加える
+- **却下2**: 4-A の規則を**新たに抽出した独立の検査標本**に当てて検証する
+- **理由**: 4-A の規則は、確定前に第1版の逆引き結果（56件）へ当てて機能を確認している
+  （`requirements.md` §1.0）。**結果が既知のものを合否条件にすると、実行前に基準を固定して
+  事前検証するという規律（`CLAUDE.md`「実験・検証の進め方」手順1・2）が形骸化する**。
+  却下1 はこの点で採れない。
+  却下2 は独立性を回復できるが、**新しい検査標本を採ると逆引き成功率の実測がもう1つ生じ、
+  criteria lock 済みの検査3 の判定（第1版の 60 件・93.3%）との関係を新たに定める必要が出る**。
+  M2 の目的は「逆引きが実用に足るかの判定」であり、そのために標本を増やすことは目的に対して過剰である。
+  **原本（4-B）は md・content_list のいずれとも独立した基準であり、1枚を除いて未観測である**ため、
+  判定の根拠として十分に独立している。4-A は「疑わしい件を漏れなく 4-B に送る」役割を果たす
