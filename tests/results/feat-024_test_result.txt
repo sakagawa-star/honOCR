@@ -278,4 +278,4 @@ tests/test_make_ocr_pdf.py::test_cli_truncated_tif
     warnings.warn(str(msg))
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-======================= 260 passed, 3 warnings in 1.28s ========================
+======================= 260 passed, 3 warnings in 1.25s ========================
