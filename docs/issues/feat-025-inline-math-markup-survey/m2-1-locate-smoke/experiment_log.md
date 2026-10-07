@@ -230,3 +230,89 @@ uv run python scripts/locate_candidates.py \
 - **幅**: **0**（外れとみなす幅は `roadmap.md` §8 の S2-1 のとおり）
 
 照合の対象は本ステージの最終出力 `{BASE2}/ocr/feat-025/m2_1_judged.jsonl` の件数である（`design.md` §1.9.2 の手順 7）。実行単位は「候補 1 件」の 1 単位であり、本予測はこの 1 実行についてのものである。
+
+### 実行（2026-09-15）
+
+`design.md` §1.9.2 の手順 3〜6 を、いずれも **`--overwrite` を付けずに**実行した。
+
+**手順 3（逆引きと処理時間の計測）**:
+
+```
+/usr/bin/time -f "経過時間: %e 秒" \
+uv run python scripts/locate_candidates.py \
+  /home/sakagawa/work/確率統計/ocr/feat-025/m2_all_candidates.jsonl \
+  --final-dir /home/sakagawa/work/確率統計/ocr/final \
+  --select 1 \
+  -o /home/sakagawa/work/確率統計/ocr/feat-025/m2_1_located.jsonl
+```
+
+```
+処理: 1 件（逆引き成功 1 件 / 失敗 0 件） → /home/sakagawa/work/確率統計/ocr/feat-025/m2_1_located.jsonl
+1 chap00 offset=3277 block=36 page=4 k=40
+経過時間: 0.06 秒
+```
+
+終了コード: 0
+
+**手順 4（原本 TIF からの切り出し）**:
+
+```
+uv run python scripts/crop_blocks.py \
+  /home/sakagawa/work/確率統計/ocr/final/chap00/chap00_gray300_content_list.json \
+  /home/sakagawa/work/確率統計/dewarping/chap00/out \
+  -o /home/sakagawa/work/確率統計/ocr/feat-025/m2-1-crops \
+  --index 36
+```
+
+```
+wrote 1 file(s) to /home/sakagawa/work/確率統計/ocr/feat-025/m2-1-crops
+```
+
+終了コード: 0。出力: `/home/sakagawa/work/確率統計/ocr/feat-025/m2-1-crops/chap00_gray300_content_list_b36_p4.png`（57,411 バイト）
+
+**手順 5（目視）**: 上記 PNG を Read ツールで開き、原本の該当箇所を読んだ。`--margin` の既定値（8.0）のままで読めたため、やり直しは行っていない。
+
+読めた文字（原本）: 「論が何の役に立つのかをいままで実感したことのない方は、その活躍ぶりに驚かれるかもしれません。／総和 ∑ や指数・対数といった基礎事項については付録 A^(p.319) に簡単なまとめを用意しましたので、適宜参照ください。」
+
+原本での `∑` の組まれ方: 和文の行中に、周囲の文字より大きい総和記号として組まれている（`A^(p.319)` の上付きも同じ行にある）。
+
+**手順 6（判定の記録）**: 手順 5 の目視をもとに判定を `missing` とし、次を 1 回実行した。
+
+```
+uv run python scripts/locate_candidates.py \
+  /home/sakagawa/work/確率統計/ocr/feat-025/m2_all_candidates.jsonl \
+  --final-dir /home/sakagawa/work/確率統計/ocr/final \
+  --select 1 --judgment missing \
+  -o /home/sakagawa/work/確率統計/ocr/feat-025/m2_1_judged.jsonl
+```
+
+終了コード: 0
+
+### 実測
+
+**件数**（`design.md` §1.9.2 の手順 7 の 1）: `ls -l` で最終出力 `{BASE2}/ocr/feat-025/m2_1_judged.jsonl` の存在を確認し、`wc -l` で **1 行**を得た。したがって判定結果レコード件数は **1 件**である。
+
+**その他**（同 手順 7 の 2）:
+
+| 項目 | 実測 |
+|---|---|
+| 投入した候補 | `chapter` = `chap00`、`offset` = 3277、`char` = `∑` |
+| 逆引きの内訳 | ブロック番号 = **36**、`page_idx` = **4**、採用した `K` = **40** |
+| 判定結果レコードのキー数 | **7**（`chapter`・`offset`・`char`・`before`・`after`・`page_idx`・`judgment`）。`roadmap.md` §5 の `c'_i` = `c_i` + 2 と一致 |
+| `page_idx` | 4 |
+| `judgment` | `missing` |
+| 切り出した PNG | `/home/sakagawa/work/確率統計/ocr/feat-025/m2-1-crops/chap00_gray300_content_list_b36_p4.png` |
+| 目視の結果 | 原本の該当箇所を判読できた（上記「手順 5」） |
+| 中間出力 `m2_1_located.jsonl` | 1 行。本ステージの最終出力ではないため件数に数えない |
+| 経過時間（手順 3） | 0.06 秒 |
+| 終了コード（手順 3・4・6） | いずれも 0 |
+
+**退避**（手順 -1.6 の再掲ではなく実測の一部として）: 退避先 `/home/sakagawa/work/確率統計/ocr/feat-025/prev/m2-1-20260915-140732/`、移動したもの `m2_1_located.jsonl`（1 件）。
+
+### 照合
+
+| 項目 | 予測値 | 実測値 | 差 |
+|---|---|---|---|
+| 判定結果レコード件数（最終出力） | 1 | **1** | **0** |
+
+幅は 0（`roadmap.md` §8 の S2-1）であり、差は 0 である。原本ページを特定でき（`page_idx` = 4）、PNG を切り出して判読できたため、同節の外れの条件にも該当しない。
